@@ -31,7 +31,7 @@ urlpatterns = [
     path('purchase-orders/delete/<int:pk>/', views.po_delete, name='po_delete'),
     # メール（またはローカルフォルダ）からの同期実行
     path('purchase-orders/sync/', views.sync_mail_view, name='sync_mail'),
-    path('purchase-orders/search/', views.po_search_view, name='po_search'),
+    path('purchase-orders/search/', views.purchase_search_view, name='purchase_search'),
     
     # --- 提携パートナー ---
     path('partners/', views.partner_list, name='partner_list'),

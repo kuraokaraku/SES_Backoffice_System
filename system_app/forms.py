@@ -34,7 +34,7 @@ class TaskStatusForm(forms.ModelForm):
         }
 
 
-class JapaneseUserCreationForm(UserCreationForm):
+class UserCreationForm(UserCreationForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         # 全フィールドにBootstrapのクラスを一括適用
@@ -49,6 +49,38 @@ class JapaneseUserCreationForm(UserCreationForm):
     class Meta(UserCreationForm.Meta):
         model = User
         fields = ("username",) # 必要に応じて "email" なども追加可能
+
+class UserEditForm(forms.ModelForm):
+    new_password = forms.CharField(
+        label="新しいパスワード (変更する場合のみ)",
+        required=False,
+        widget=forms.PasswordInput(attrs={'class': 'form-control', 'placeholder': '未入力なら変更されません'})
+    )
+
+    class Meta:
+        model = User
+        fields = ['username', 'is_active']
+        widgets = {
+            'username': forms.TextInput(attrs={'class': 'form-control'}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        # Viewから渡される「操作しているユーザー」を取得
+        self.request_user = kwargs.pop('request_user', None)
+        super().__init__(*args, **kwargs)
+
+        # 操作ユーザーが管理者(is_superuser)でない場合、is_activeを隠す
+        if self.request_user and not self.request_user.is_superuser:
+            self.fields.pop('is_active')
+
+    def save(self, commit=True):
+        user = super().save(commit=False)
+        new_password = self.cleaned_data.get("new_password")
+        if new_password:
+            user.set_password(new_password)
+        if commit:
+            user.save()
+        return user
 
 class BusinessPartnerForm(forms.ModelForm):
     class Meta:
@@ -69,3 +101,4 @@ class BusinessPartnerForm(forms.ModelForm):
             'deduction_unit_price': forms.NumberInput(attrs={'class': 'form-control'}),
             'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
         }
+

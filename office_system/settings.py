@@ -128,7 +128,13 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # ログイン後のリダイレクト先も一番下に追記しておきましょう
 LOGIN_REDIRECT_URL = 'menu'
 
+# ログアウトした後に遷移するURL
+LOGOUT_REDIRECT_URL = 'login'  # ログイン画面のURLパターン名
+
 # myproject/settings.py
 LANGUAGE_CODE = 'ja'  # ここが 'ja' になっていれば、標準のエラーは日本語化されます
 
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')

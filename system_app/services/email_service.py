@@ -1,76 +1,65 @@
-# system_app/services/email_service.py
 import imaplib
 import email
+from email.header import decode_header
+import os
 from django.conf import settings
-from ..models import PurchaseOrder
 from django.core.files.base import ContentFile
+from django.core.files.storage import default_storage
+from ..models import PurchaseOrder
 from datetime import datetime
 
-def search_and_sync_emails(client_name, start_date=None, end_date=None):
-    """
-    指定された条件でXServerのメールを検索し、PDFを保存する
-    """
-    # ここではIMAPの検索クエリを組み立てる例
-    search_criteria = []
-    
-    # 件名または本文にクライアント名が含まれるものを探す設定
-    if client_name:
-        search_criteria.append(f'SUBJECT "{client_name}"')
-    
-    # 日付条件 (IMAP形式: 01-Jan-2023)
-    if start_date:
-        d = datetime.strptime(start_date, '%Y-%m-%d')
-        search_criteria.append(f'SINCE {d.strftime("%d-%b-%Y")}')
-    
-    # ... (前回のIMAP接続ロジックをベースに、mail.searchでこのcriteriaを使用) ...
-    # query = " ".join(search_criteria)
-    # status, messages = mail.search(None, query)
-    
-    return f"「{client_name}」のメール検索が完了しました（※現在はシミュレーション動作です）"
+def search_and_save_to_vps(client_name, start_date=None):
+    try:
+        # 1. レンタルサーバーのメールに接続 (IMAP)
+        mail = imaplib.IMAP4_SSL(settings.XSERVER_IMAP_SERVER)
+        mail.login(settings.XSERVER_MAIL_USER, settings.XSERVER_MAIL_PASSWORD)
+        mail.select("INBOX")
 
-def sync_purchase_orders_from_mail():
-    """
-    XServerのメールから「注文書」という件名のメールを探し、PDFを保存する
-    """
-    if settings.DEBUG:
-        # 【Mockモード】ローカルの特定フォルダから読み込んだことにする
-        print("DEBUGモード: ローカルファイルから注文書をシミュレートします")
-        return "Mock実行完了"
+        search_query = f'SUBJECT "{client_name}"'
+        if start_date:
+            d_start = datetime.strptime(start_date, '%Y-%m-%d')
+            search_query += f' SINCE {d_start.strftime("%d-%b-%Y")}'
 
-    # --- 本番接続用設定 ---
-    # XServerのホスト名（例: sv***.xserver.jp）
-    IMAP_SERVER = "sv***.xserver.jp" 
-    EMAIL_USER = "your-email@example.com"
-    EMAIL_PASS = "your-password"
+        typ, data = mail.search('UTF-8', search_query)
+        if typ != 'OK': return "メール検索に失敗しました。"
 
-    mail = imaplib.IMAP4_SSL(IMAP_SERVER)
-    mail.login(EMAIL_USER, EMAIL_PASS)
-    mail.select("INBOX")
+        count = 0
+        for num in data[0].split():
+            _, msg_data = mail.fetch(num, '(RFC822)')
+            msg = email.message_from_bytes(msg_data[0][1])
+            received_at = email.utils.parsedate_to_datetime(msg.get("Date"))
 
-    # 「注文書」という件名の未読メールを検索（例）
-    status, messages = mail.search(None, '(SUBJECT "注文書")')
-    
-    for num in messages[0].split():
-        res, msg_data = mail.fetch(num, "(RFC822)")
-        for response_part in msg_data:
-            if isinstance(response_part, tuple):
-                msg = email.message_from_bytes(response_part[1])
-                received_date = email.utils.parsedate_to_datetime(msg.get("Date"))
-                
-                for part in msg.walk():
-                    if part.get_content_maintype() == 'multipart': continue
-                    if part.get('Content-Disposition') is None: continue
+            for part in msg.walk():
+                if part.get_content_maintype() == 'multipart': continue
+                filename = part.get_filename()
+
+                if filename:
+                    # ファイル名のデコード
+                    decoded_name = ""
+                    for s, charset in decode_header(filename):
+                        if isinstance(s, bytes):
+                            decoded_name += s.decode(charset or 'utf-8')
+                        else:
+                            decoded_name += s
                     
-                    filename = part.get_filename()
-                    if filename and ".pdf" in filename.lower():
-                        # DBに保存
-                        po = PurchaseOrder(
-                            client_name="メールから自動解析", # ここに送信者名抽出ロジックを入れる
-                            received_at=received_date,
-                        )
-                        po.file.save(filename, ContentFile(part.get_payload(decode=True)))
-                        po.save()
+                    if decoded_name.lower().endswith('.pdf'):
+                        # 2. VPS内のmediaフォルダに保存
+                        pdf_content = part.get_payload(decode=True)
+                        save_path = f"purchase_orders/{decoded_name}"
 
-    mail.close()
-    mail.logout()
-    return "同期が完了しました"
+                        # 同名ファイルがあれば上書きせず保存
+                        actual_path = default_storage.save(save_path, ContentFile(pdf_content))
+
+                        # 3. DBに記録
+                        PurchaseOrder.objects.create(
+                            client_name=client_name,
+                            received_at=received_at,
+                            file=actual_path
+                        )
+                        count += 1
+
+        mail.logout()
+        return f"{count}件の注文書をVPSに保存しました。"
+
+    except Exception as e:
+        return f"エラー: {str(e)}"

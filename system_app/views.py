@@ -9,11 +9,13 @@ from django.utils import timezone
 from django.contrib.auth.models import User
 from django.contrib.auth.forms import UserCreationForm, UserChangeForm
 from django.contrib.admin.views.decorators import staff_member_required
-from .forms import JapaneseUserCreationForm
+from .forms import UserEditForm
 
 from django.http import FileResponse, Http404
 from .services.email_service import sync_purchase_orders_from_mail
 from .services.email_service import search_and_sync_emails # 検索用サービス
+
+from django.http import HttpResponseForbidden
 
 
 def index(request):
@@ -23,39 +25,52 @@ def index(request):
 def menu(request):
     return render(request, 'menu.html')
 
-# ユーザー一覧（管理者のみアクセス可能にする）
-@staff_member_required
+# ユーザー一覧
 def user_list(request):
-    users = User.objects.all()
+    # 1. ログインユーザーが管理者(superuser)かどうか判定
+    if request.user.is_superuser:
+        # 管理者の場合は、全ユーザーを取得
+        users = User.objects.all().order_by('-date_joined')
+    else:
+        # 一般ユーザーの場合は、自分自身のデータのみを取得
+        users = User.objects.filter(pk=request.user.pk)
+
     return render(request, 'user_list.html', {'users': users})
+
 
 # ユーザー新規登録
 @staff_member_required
 def user_create(request):
     if request.method == 'POST':
         # 日本語版フォームを使用
-        form = JapaneseUserCreationForm(request.POST)
+        form = UserCreationForm(request.POST)
         if form.is_valid():
             form.save()
             return redirect('user_list')
     else:
         # 日本語版フォームを使用
-        form = JapaneseUserCreationForm()
+        form = UserCreationForm()
     return render(request, 'user_form.html', {'form': form, 'title': 'ユーザー新規登録'})
 
-# ユーザー編集（権限変更など）
-@staff_member_required
+
 def user_edit(request, pk):
-    user = get_object_or_404(User, pk=pk)
-    if request.method == 'POST':
-        # ユーザー情報の変更用フォーム
-        form = UserChangeForm(request.POST, instance=user)
+    # 管理者でない、かつ、編集対象が自分自身でない場合はアクセス拒否
+    if not request.user.is_superuser and request.user.pk != pk:
+        return HttpResponseForbidden("自分のプロフィール以外は編集できません。")
+
+    target_user = get_object_or_404(User, pk=pk)
+
+    if request.method == "POST":
+        # request_user をフォームに渡す
+        form = UserEditForm(request.POST, instance=target_user, request_user=request.user)
         if form.is_valid():
             form.save()
             return redirect('user_list')
     else:
-        form = UserChangeForm(instance=user)
-    return render(request, 'user_form.html', {'form': form, 'title': 'ユーザー情報の変更'})
+        form = UserEditForm(instance=target_user, request_user=request.user)
+
+    return render(request, 'user_edit.html', {'form': form, 'target_user': target_user})
+
 
 # フリーランサー一覧
 @login_required
@@ -175,8 +190,20 @@ def purchase_order_list(request):
     orders = PurchaseOrder.objects.all().order_by('-received_at')
     return render(request, 'purchase_order_list.html', {'purchase_orders': orders})
 
-# 2. ダウンロード処理
-def po_download(request, pk):
+# 2. 検索
+def purchase_search_view(request):
+    # 両方のマスターから名前のリストを取得
+    partners = BusinessPartner.objects.filter(is_active=True)
+    freelancers = Freelancer.objects.filter(is_active=True)
+
+    context = {
+        'partners': partners,
+        'freelancers': freelancers,
+    }
+    return render(request, 'search_order.html', context)
+
+# 3. ダウンロード処理
+def purchase_download(request, pk):
     order = get_object_or_404(PurchaseOrder, pk=pk)
     if not order.file:
         raise Http404("ファイルが見つかりません")
@@ -186,13 +213,13 @@ def po_download(request, pk):
     
     return FileResponse(open(order.file.path, 'rb'), as_attachment=True)
 
-# 3. 削除処理
-def po_delete(request, pk):
+# 4. 削除処理
+def purchase_delete(request, pk):
     order = get_object_or_404(PurchaseOrder, pk=pk)
     order.delete()
     return redirect('purchase_order_list')
 
-# 4. 同期実行の橋渡し（email_serviceを呼び出す）
+# 5. 同期実行の橋渡し（email_serviceを呼び出す）
 def sync_mail_view(request):
     # ここでメール同期ロジックを呼び出す（後ほど作成）
     # sync_purchase_orders_from_mail() 
@@ -206,7 +233,7 @@ def download_purchase_order(request, pk):
     # ファイルを返す
     return FileResponse(open(po.file.path, 'rb'), as_attachment=True)
 
-def po_search_view(request):
+def purchase_search_view(request):
     # 1. 選択肢として表示するマスタデータを取得
     freelancers = Freelancer.objects.all().values_list('name', flat=True)
     #partners = BusinessPartner.objects.all().values_list('name', flat=True)
@@ -229,7 +256,7 @@ def po_search_view(request):
             'message': result_message
         })
 
-    return render(request, 'po_search.html', {'client_choices': client_choices})
+    return render(request, 'purchase_search.html', {'client_choices': client_choices})
 
 # 提携パートナー
 # 一覧表示

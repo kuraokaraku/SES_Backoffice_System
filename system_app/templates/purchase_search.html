@@ -9,12 +9,16 @@
             <form method="POST">
                 {% csrf_token %}
                 <div class="row g-3">
-                    <div class="col-md-12">
-                        <label class="form-label fw-bold">クライアント名 (マスタから選択または入力)</label>
-                        <input class="form-control" list="clientOptions" name="client_name" placeholder="名前を入力または選択してください..." required>
-                        <datalist id="clientOptions">
-                            {% for name in client_choices %}
-                            <option value="{{ name }}">
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">クライアント名（選択または直接入力）</label>
+                        <input type="text" name="client_name" list="client-options" class="form-control" placeholder="会社名または氏名を入力..." required>
+                        
+                        <datalist id="client-options">
+                            {% for partner in partners %}
+                                <option value="{{ partner.name }}">提携パートナー</option>
+                            {% endfor %}
+                            {% for freelancer in freelancers %}
+                                <option value="{{ freelancer.name }}">個人事業主</option>
                             {% endfor %}
                         </datalist>
                     </div>
