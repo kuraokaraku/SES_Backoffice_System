@@ -37,7 +37,7 @@ class TaskStatusForm(forms.ModelForm):
 class JapaneseUserCreationForm(UserCreationForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # 全フィールドにBootstrapのクラスを一括適用（views.pyでやるよりスマートです）
+        # 全フィールドにBootstrapのクラスを一括適用
         for field in self.fields.values():
             field.widget.attrs['class'] = 'form-control'
         
