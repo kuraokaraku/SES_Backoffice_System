@@ -170,7 +170,7 @@ def task_update(request, pk):
     return render(request, 'task_form.html', {'form': form, 'task': task})
 
 # 注文書
-# 1. 一覧表示（これがエラーの原因です）
+# 1. 一覧表示
 def purchase_order_list(request):
     orders = PurchaseOrder.objects.all().order_by('-received_at')
     return render(request, 'purchase_order_list.html', {'purchase_orders': orders})
