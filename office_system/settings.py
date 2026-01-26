@@ -26,7 +26,7 @@ SECRET_KEY = 'django-insecure-m%a86_2f0$%x5iwp__+f2gige190w^!@pb$wyx(gi(j-07&+i9
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = False
 
-ALLOWED_HOSTS = ["85.131.247.235", "localhost", "itfl-kanri.jp", '127.0.0.1']
+ALLOWED_HOSTS = ["85.131.249.73", "localhost", "itfl-kanri.jp", '127.0.0.1']
 
 
 # Application definition
@@ -135,6 +135,7 @@ LOGOUT_REDIRECT_URL = 'login'  # ログイン画面のURLパターン名
 LANGUAGE_CODE = 'ja'  # ここが 'ja' になっていれば、標準のエラーは日本語化されます
 
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+CSRF_TRUSTED_ORIGINS = ['https://itfl-kanri.jp']
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
