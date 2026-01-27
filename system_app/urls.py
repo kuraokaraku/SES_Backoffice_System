@@ -26,9 +26,9 @@ urlpatterns = [
     # 注文書の一覧表示
     path('purchase-orders/', views.purchase_order_list, name='purchase_order_list'), 
     # 注文書のダウンロード（回数カウント付き）
-    path('purchase-orders/download/<int:pk>/', views.po_download, name='po_download'),
+    #path('purchase-orders/download/<int:pk>/', views.po_download, name='po_download'),
     # 注文書の削除
-    path('purchase-orders/delete/<int:pk>/', views.po_delete, name='po_delete'),
+    path('purchase-orders/delete/<int:pk>/', views.purchase_delete, name='purchase_delete'),
     # メール（またはローカルフォルダ）からの同期実行
     path('purchase-orders/sync/', views.sync_mail_view, name='sync_mail'),
     path('purchase-orders/search/', views.purchase_search_view, name='purchase_search'),

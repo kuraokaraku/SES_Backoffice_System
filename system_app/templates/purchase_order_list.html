@@ -23,7 +23,7 @@
                 <td>{{ po.saved_at|date:"Y/m/d" }}</td>
                 <td><span class="badge bg-info">{{ po.download_count }}回</span></td>
                 <td>
-                    <a href="{% url 'po_download' po.pk %}" class="btn btn-sm btn-primary">ダウンロード</a>
+                    <!--<a href="{% url 'po_download' po.pk %}" class="btn btn-sm btn-primary">ダウンロード</a>-->
                     <a href="{% url 'po_delete' po.pk %}" class="btn btn-sm btn-danger" onclick="return confirm('本当に削除しますか？')">削除</a>
                 </td>
             </tr>

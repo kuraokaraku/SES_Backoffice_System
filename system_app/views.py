@@ -12,8 +12,8 @@ from django.contrib.admin.views.decorators import staff_member_required
 from .forms import UserEditForm
 
 from django.http import FileResponse, Http404
-from .services.email_service import sync_purchase_orders_from_mail
-from .services.email_service import search_and_sync_emails # 検索用サービス
+#from .services.email_service import search_and_sync_emails # 検索用サービス
+from .services.email_service import search_and_save_to_vps
 
 from django.http import HttpResponseForbidden
 
@@ -248,8 +248,8 @@ def purchase_search_view(request):
         end_date = request.POST.get('end_date')
 
         # 3. 条件をもとにメール検索を実行（後述のサービスを呼び出し）
-        result_message = search_and_sync_emails(client_name, start_date, end_date)
-        
+        #result_message = search_and_sync_emails(client_name, start_date, end_date)
+        result_message = ""
         # 完了後、一覧画面へ（メッセージを持っていく）
         return render(request, 'purchase_order_list.html', {
             'purchase_orders': PurchaseOrder.objects.all().order_by('-received_at'),
