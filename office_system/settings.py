@@ -12,6 +12,10 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 
 from pathlib import Path
 import os
+from dotenv import load_dotenv
+
+# .envファイルを読み込む
+load_dotenv()
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -21,13 +25,19 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-m%a86_2f0$%x5iwp__+f2gige190w^!@pb$wyx(gi(j-07&+i9'
+SECRET_KEY = os.getenv('SECRET_KEY', 'fallback-secret-key')
+#SECRET_KEY = 'django-insecure-m%a86_2f0$%x5iwp__+f2gige190w^!@pb$wyx(gi(j-07&+i9'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = False
+DEBUG = os.getenv('DEBUG', 'False') == 'True'
+#DEBUG = False
 
 ALLOWED_HOSTS = ["85.131.249.73", "localhost", "itfl-kanri.jp", '127.0.0.1']
 
+# XServer設定
+XSERVER_IMAP_SERVER = os.getenv('XSERVER_IMAP_SERVER')
+XSERVER_MAIL_USER = os.getenv('XSERVER_MAIL_USER')
+XSERVER_MAIL_PASSWORD = os.getenv('XSERVER_MAIL_PASSWORD')
 
 # Application definition
 
