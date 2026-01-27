@@ -234,29 +234,36 @@ def download_purchase_order(request, pk):
     return FileResponse(open(po.file.path, 'rb'), as_attachment=True)
 
 def purchase_search_view(request):
+    print (f"-----  purchase_search_view start.")
     # 1. 選択肢として表示するマスタデータを取得
-    freelancers = Freelancer.objects.all().values_list('name', flat=True)
+    freelancers_list = Freelancer.objects.all().values_list('name', flat=True)
     #partners = BusinessPartner.objects.all().values_list('name', flat=True)
-    
     # 選択肢を1つのリストにまとめる（重複削除）
-    client_choices = sorted(list(set(list(freelancers))))
+    client_choices = sorted(list(set(list(freelancers_list))))
+
+    partners = BusinessPartner.objects.all()
+    freelancers = Freelancer.objects.all()
+
 
     if request.method == 'POST':
         # 2. フォームから送信された条件を取得
         client_name = request.POST.get('client_name')
-        start_date = request.POST.get('start_date') # yyyy-mm-dd
+        start_date = request.POST.get('start_date')
         end_date = request.POST.get('end_date')
 
         # 3. 条件をもとにメール検索を実行（後述のサービスを呼び出し）
-        #result_message = search_and_sync_emails(client_name, start_date, end_date)
-        result_message = ""
+        result_message = search_and_save_to_vps(client_name, start_date, end_date)
         # 完了後、一覧画面へ（メッセージを持っていく）
         return render(request, 'purchase_order_list.html', {
             'purchase_orders': PurchaseOrder.objects.all().order_by('-received_at'),
             'message': result_message
         })
 
-    return render(request, 'purchase_search.html', {'client_choices': client_choices})
+    return render(request, 'purchase_search.html', {
+        'client_choices': client_choices, # TODO あとで整理する
+        'partners': partners,
+        'freelancers': freelancers,
+    })
 
 # 提携パートナー
 # 一覧表示
