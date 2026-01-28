@@ -116,3 +116,18 @@ class BusinessPartner(models.Model):
     class Meta:
         verbose_name = "提携パートナー"
         verbose_name_plural = "提携パートナー一覧"
+
+# 名刺管理
+class BusinessCard(models.Model):
+    company_name = models.CharField("会社名", max_length=100, blank=True)
+    name = models.CharField("氏名", max_length=100)
+    department = models.CharField("部署", max_length=100, blank=True)
+    position = models.CharField("役職", max_length=100, blank=True)
+    email = models.EmailField("メールアドレス", blank=True)
+    phone_number = models.CharField("電話番号", max_length=20, blank=True)
+    address = models.TextField("住所", blank=True)
+    image = models.ImageField("名刺画像", upload_to='business_cards/', blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.company_name} - {self.name}"

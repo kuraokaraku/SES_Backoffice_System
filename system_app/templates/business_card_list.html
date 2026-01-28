@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container mt-4">
+    <h2>名刺管理一覧</h2>
+    <a href="#" class="btn btn-success mb-3">新規登録（後ほど作成）</a>
+    
+    <div class="row">
+        {% for card in cards %}
+            <div class="col-md-4 mb-3">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">{{ card.name }} 様</h5>
+                        <p class="card-text">{{ card.company_name }}</p>
+                    </div>
+                </div>
+            </div>
+        {% empty %}
+            <p>まだ名刺が登録されていません。</p>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

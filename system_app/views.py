@@ -2,7 +2,7 @@
 import os
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
-from .models import MonthlyProcess, TaskStatus, Freelancer, PurchaseOrder, BusinessPartner
+from .models import MonthlyProcess, TaskStatus, Freelancer, PurchaseOrder, BusinessPartner, BusinessCard
 from .forms import FreelancerForm, TaskStatusForm, BusinessPartnerForm
 from django.utils import timezone
 
@@ -16,6 +16,7 @@ from django.http import FileResponse, Http404
 from .services.email_service import search_and_save_to_vps
 
 from django.http import HttpResponseForbidden
+
 
 
 def index(request):
@@ -295,3 +296,9 @@ def partner_detail(request, pk=None):
         return redirect('partner_list')
         
     return render(request, 'partner_detail.html', {'partner': partner})
+
+
+
+def business_card_list(request):
+    cards = BusinessCard.objects.all().order_by('-created_at')
+    return render(request, 'business_card_list.html', {'cards': cards})
