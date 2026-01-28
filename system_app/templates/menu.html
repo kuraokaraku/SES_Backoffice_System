@@ -1,3 +1,7 @@
+{% extends "base.html" %}
+{% load humanize %}
+
+{% block content %}
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -7,17 +11,6 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
 </head>
 <body class="bg-light">
-
-<nav class="navbar navbar-dark bg-dark mb-4">
-    <div class="container-fluid">
-        <span class="navbar-brand">業務効率化システム</span>
-        <form action="{% url 'logout' %}" method="post" class="d-inline">
-            {% csrf_token %}
-            <button type="submit" class="btn btn-outline-light btn-sm">ログアウト</button>
-        </form>
-    </div>
-</nav>
-
 <div class="container">
     <h2 class="mb-4 text-center">メインメニュー</h2>
     <div class="row g-4">
@@ -82,3 +75,4 @@
 
 </body>
 </html>
+{% endblock %}
