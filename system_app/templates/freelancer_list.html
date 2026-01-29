@@ -11,11 +11,12 @@
         <thead class="table-light">
           <tr>
             <th>氏名</th>
-            <th>クライアント / 案件</th>
+            <th>案件</th>
             <th>単価 (月額)</th>
             <th>精算幅 (h)</th>
             <th>控除/超過単価</th>
             <th>契約期間</th>
+            <th>更新日</th>
             <th class="text-center">操作</th>
           </tr>
         </thead>
@@ -24,10 +25,9 @@
           <tr>
             <td>
               <div class="fw-bold">{{ f.name }}</div>
-              <small class="text-muted">{{ f.email }}</small>
+              <small class="text-muted">{{ f.client_name|default:"" }}</small>
             </td>
             <td>
-              <div>{{ f.client_name }}</div>
               <small class="text-muted">{{ f.project_name }}</small>
             </td>
             <td>{{ f.base_unit_price|intcomma }} 円</td>
@@ -46,6 +46,7 @@
                     {{ f.contract_start|date:"Y-m-d"|default:"未設定" }} 〜 {{ f.contract_end|date:"Y-m-d"|default:"未設定" }}
                 </span>
             </td>
+            <td>{{ f.updated_at|date:"Y-m-d" }}</td>
             <td class="text-center">
               <a
                 href="{% url 'freelancer_update' f.pk %}"
@@ -61,7 +62,7 @@
           </tr>
           {% empty %}
           <tr>
-            <td colspan="7" class="text-center py-4 text-muted">
+            <td colspan="8" class="text-center py-4 text-muted">
               登録されている個人事業主がいません。
             </td>
           </tr>
