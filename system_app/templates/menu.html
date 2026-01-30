@@ -1,91 +1,71 @@
-{% extends "base.html" %}
-{% load humanize %}
+{% extends "base.html" %} {% block content %}
 
-{% block content %}
-<!DOCTYPE html>
-<html lang="ja">
-<head>
-    <meta charset="UTF-8">
-    <title>メインメニュー - 業務効率化システム</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
-</head>
-<body class="bg-light">
-<div class="container">
-    <h2 class="mb-4 text-center">メインメニュー</h2>
-    <div class="row g-4">
-        <div class="col-md-4">
-            <div class="card h-100 shadow-sm border-dark">
-                <div class="card-body text-center">
-                    <i class="bi bi-people-fill display-4 text-dark"></i>
-                    <h5 class="card-title mt-3">ユーザー管理</h5>
-                    <p class="card-text text-muted small">システムの利用ユーザーの登録・編集を行います。</p>
-                    <a href="{% url 'user_list' %}" class="btn btn-dark w-100 mt-2">開く</a>
-                </div>
-            </div>
-        </div>
+<div
+  class="container"
+  style="
+    min-height: calc(100vh - 220px);
+    display: grid;
+    grid-template-rows: 1fr auto 1fr auto 2fr;
+  "
+>
+  <div></div>
 
-        <div class="col-md-4">
-            <div class="card h-100 shadow-sm border-success">
-                <div class="card-body text-center">
-                    <i class="bi bi-person-lines-fill display-4 text-success"></i>
-                    <h5 class="card-title mt-3">個人事業主一覧</h5>
-                    <p class="card-text text-muted small">登録されている個人事業主の情報を確認・検索できます。</p>
-                    <a href="{% url 'freelancer_list' %}" class="btn btn-success w-100 mt-2">開く</a>
-                </div>
-            </div>
-        </div>
+  <h2 class="mb-0 text-center">メインメニュー</h2>
 
-        <div class="col-md-4">
-            <div class="card h-100 shadow-sm border-warning">
-                <div class="card-body text-center">
-                    <i class="bi bi-calendar3 display-4 text-warning"></i>
-                    <h5 class="card-title mt-3">月毎の作業管理</h5>
-                    <p class="card-text text-muted small">事務作業の進捗状況や月次の実績を表示します。</p>
-                    <a href="{% url 'monthly_list' %}" class="btn btn-warning text-white w-100 mt-2">開く</a>
-                </div>
-            </div>
-        </div>
+  <div></div>
 
-        <div class="col-md-4">
-            <div class="card h-100 shadow-sm border-info">
-                <div class="card-body text-center">
-                    <i class="bi bi-archive-fill display-4 text-info"></i>
-                    <h5 class="card-title mt-3">注文書アーカイブ</h5>
-                    <p class="card-text text-muted small">
-                        Xサーバーのメールから注文書PDFを取得・保存します。
-                    </p>
-                    <a href="{% url 'purchase_order_list' %}" class="btn btn-info text-white w-100 mt-2">開く</a>
-                </div>
-            </div>
+  <div class="row g-4">
+    <div class="col-md-4">
+      <div class="card h-100 shadow-sm border-success">
+        <div class="card-body text-center">
+          <i class="bi bi-person-lines-fill display-4 text-success"></i>
+          <h5 class="card-title mt-3">人材管理</h5>
+          <p class="card-text text-muted small">
+            個人事業主・ビジネスパートナーの情報を管理します。
+          </p>
+          <a href="{% url 'party_list' %}" class="btn btn-success w-100 mt-2"
+            >開く</a
+          >
         </div>
-
-        <div class="col-md-4">
-            <div class="card h-100 shadow-sm border-dark">
-                <div class="card-body text-center">
-                    <i class="bi bi-building-fill display-4 text-success"></i>
-                    <h5 class="card-title mt-3">提携パートナー管理</h5>
-                    <p class="card-text text-muted small">協力会社・法人パートナーの情報を管理します。</p>
-                    <a href="{% url 'partner_list' %}" class="btn btn-success text-white w-100 mt-2">開く</a>
-                </div>
-            </div>
-        </div>
-
-        <div class="col-md-4">
-            <div class="card h-100 shadow-sm border-secondary">
-                <div class="card-body text-center">
-                    <i class="bi bi-person-badge-fill display-4 text-secondary"></i>
-                    <h5 class="card-title mt-3">名刺管理</h5>
-                    <p class="card-text text-muted small">
-                        名刺の情報を登録・管理し、画像を保存します。
-                    </p>
-                    <a href="{% url 'business_card_list' %}" class="btn btn-secondary text-white w-100 mt-2">開く</a>
-                </div>
-            </div>
-        </div>
+      </div>
     </div>
+
+    <div class="col-md-4">
+      <div class="card h-100 shadow-sm border-warning">
+        <div class="card-body text-center">
+          <i class="bi bi-calendar3 display-4 text-warning"></i>
+          <h5 class="card-title mt-3">月毎の作業管理</h5>
+          <p class="card-text text-muted small">
+            事務作業の進捗状況や月次の実績を表示します。
+          </p>
+          <a
+            href="{% url 'monthly_list' %}"
+            class="btn btn-warning text-white w-100 mt-2"
+            >開く</a
+          >
+        </div>
+      </div>
+    </div>
+
+    <div class="col-md-4">
+      <div class="card h-100 shadow-sm border-info">
+        <div class="card-body text-center">
+          <i class="bi bi-archive-fill display-4 text-info"></i>
+          <h5 class="card-title mt-3">注文書アーカイブ</h5>
+          <p class="card-text text-muted small">
+            Xサーバーのメールから注文書PDFを取得・保存します。
+          </p>
+          <a
+            href="{% url 'purchase_order_list' %}"
+            class="btn btn-info text-white w-100 mt-2"
+            >開く</a
+          >
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div></div>
 </div>
 
-</body>
-</html>
 {% endblock %}
