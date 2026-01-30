@@ -1,0 +1,44 @@
+{% extends "base.html" %} {% load humanize %} {% block content %}
+<div class="container mt-4">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h2>個人事業主 詳細</h2>
+    <div class="d-flex gap-2">
+      <a href="{% url 'freelancer_update' f.pk %}" class="btn btn-primary"
+        >編集</a
+      >
+      <a href="{% url 'party_list' %}" class="btn btn-outline-secondary"
+        >一覧へ</a
+      >
+    </div>
+  </div>
+
+  <div class="card shadow-sm">
+    <div class="card-body">
+      <p><strong>氏名：</strong>{{ f.name }}</p>
+      <p><strong>メール：</strong>{{ f.email }}</p>
+      <p><strong>クライアント：</strong>{{ f.client_name|default:"-" }}</p>
+      <p><strong>案件：</strong>{{ f.project_name|default:"-" }}</p>
+
+      <hr />
+
+      <p><strong>単価：</strong>{{ f.base_unit_price|intcomma }} 円</p>
+      <p>
+        <strong>精算幅：</strong>{{ f.lower_limit_hours }}h 〜 {{
+        f.upper_limit_hours }}h
+      </p>
+      <p><strong>控除：</strong>{{ f.deduction_unit_price|intcomma }} 円</p>
+      <p><strong>超過：</strong>{{ f.overtime_unit_price|intcomma }} 円</p>
+
+      <hr />
+
+      <p>
+        <strong>契約期間：</strong>
+        {{ f.contract_start|date:"Y-m-d"|default:"未設定" }} 〜 {{
+        f.contract_end|date:"Y-m-d"|default:"未設定" }}
+      </p>
+      <p><strong>登録日：</strong>{{ f.created_at|date:"Y-m-d" }}</p>
+      <p><strong>更新日：</strong>{{ f.updated_at|date:"Y-m-d" }}</p>
+    </div>
+  </div>
+</div>
+{% endblock %}

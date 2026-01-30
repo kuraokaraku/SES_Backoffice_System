@@ -1,0 +1,116 @@
+{% extends "base.html" %} {% load humanize %} {% block content %}
+<div class="container mt-4">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h2>人材一覧</h2>
+    <div class="d-flex gap-2">
+      <a href="{% url 'freelancer_create' %}" class="btn btn-primary"
+        >個人 新規</a
+      >
+      <a href="{% url 'partner_add' %}" class="btn btn-dark">BP 新規</a>
+    </div>
+  </div>
+
+  {# フィルタ（形態） #}
+  <div class="mb-3">
+    <div class="btn-group" role="group" aria-label="type filter">
+      <a
+        class="btn btn-outline-secondary {% if filter_type == 'all' %}active{% endif %}"
+        href="{% url 'party_list' %}?type=all"
+        >全て</a
+      >
+      <a
+        class="btn btn-outline-secondary {% if filter_type == 'freelancer' %}active{% endif %}"
+        href="{% url 'party_list' %}?type=freelancer"
+        >個人事業主</a
+      >
+      <a
+        class="btn btn-outline-secondary {% if filter_type == 'partner' %}active{% endif %}"
+        href="{% url 'party_list' %}?type=partner"
+        >BP</a
+      >
+    </div>
+  </div>
+
+  <div class="card shadow-sm">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>形態</th>
+            <th>名称</th>
+            <th>補足</th>
+            <th>単価 (月額)</th>
+            <th>精算幅 (h)</th>
+            <th>状態</th>
+            <th>日付</th>
+            <th class="text-center"></th>
+            {# 詳細ボタン専用。列名なし #}
+            <th class="text-center">操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in rows %}
+          <tr>
+            <td>
+              {% if r.kind_key == "freelancer" %}
+              <span class="badge bg-primary">個人</span>
+              {% else %}
+              <span class="badge bg-dark">BP</span>
+              {% endif %}
+            </td>
+
+            <td class="fw-bold">{{ r.name }}</td>
+
+            <td><small class="text-muted">{{ r.sub }}</small></td>
+
+            <td>{{ r.base_unit_price|intcomma }} 円</td>
+
+            <td>
+              <span class="badge bg-secondary">
+                {{ r.lower }}h 〜 {{ r.upper }}h
+              </span>
+            </td>
+
+            <td>
+              {% if r.status == "稼働中" %}
+              <span class="badge bg-success">稼働中</span>
+              {% elif r.status == "停止中" %}
+              <span class="badge bg-secondary">停止中</span>
+              {% elif r.status == "契約あり" %}
+              <span class="badge bg-info text-dark">契約あり</span>
+              {% else %}
+              <span class="text-muted">-</span>
+              {% endif %}
+            </td>
+
+            <td>
+              <small class="text-muted">{{ r.date_label }}</small><br />
+              {{ r.date_value|date:"Y-m-d" }}
+            </td>
+
+            <td class="text-center">
+              <a
+                href="{{ r.detail_url }}"
+                class="btn btn-sm btn-outline-secondary"
+                >詳細</a
+              >
+            </td>
+            <td class="text-center">
+              <a href="{{ r.edit_url }}" class="btn btn-sm btn-outline-primary"
+                >編集</a
+              >
+            </td>
+          </tr>
+          {% empty %}
+          <tr>
+            <td colspan="9" class="text-center py-4 text-muted">
+              データがありません。
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

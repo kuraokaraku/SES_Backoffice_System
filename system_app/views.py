@@ -11,6 +11,8 @@ from django.contrib.auth.forms import UserCreationForm, UserChangeForm
 from django.contrib.admin.views.decorators import staff_member_required
 from .forms import UserEditForm
 
+from django.urls import reverse
+
 from django.http import FileResponse, Http404
 #from .services.email_service import search_and_sync_emails # 検索用サービス
 from .services.email_service import search_and_save_to_vps
@@ -71,6 +73,81 @@ def user_edit(request, pk):
         form = UserEditForm(instance=target_user, request_user=request.user)
 
     return render(request, 'user_edit.html', {'form': form, 'target_user': target_user})
+
+#統合一覧表示
+@login_required
+def party_list(request):
+    """
+    Freelancer / BusinessPartner を同じ一覧で表示する
+    フィルタ: ?type=all|freelancer|partner
+    """
+    filter_type = request.GET.get("type", "all")  # all / freelancer / partner
+
+    rows = []
+
+    # 個人事業主
+    if filter_type in ("all", "freelancer"):
+        freelancers = Freelancer.objects.all().order_by("-updated_at")
+        for f in freelancers:
+            # 契約状態
+            # contract_start/end がどっちか入ってたら「契約設定あり」扱いにする
+            # もう少し厳密にするなら today と比較して "契約中/未開始/終了" にできる
+            status = "-"
+            if f.contract_start or f.contract_end:
+                status = "契約あり"
+
+            rows.append({
+                "kind": "個人事業主",
+                "kind_key": "freelancer",
+                "name": f.name,
+                "sub": f.client_name or "",
+                "base_unit_price": f.base_unit_price,
+                "lower": f.lower_limit_hours,
+                "upper": f.upper_limit_hours,
+                "status": status,
+                "date_label": "更新日",
+                "date_value": f.updated_at,
+                "detail_url": reverse("freelancer_detail", args=[f.pk]),
+                "edit_url": reverse("freelancer_update", args=[f.pk]),
+            })
+
+    # 提携パートナー
+    if filter_type in ("all", "partner"):
+        partners = BusinessPartner.objects.all().order_by("-created_at")
+        for p in partners:
+            rows.append({
+                "kind": "BP",
+                "kind_key": "partner",
+                "name": p.name,
+                "sub": p.contact_person or "",
+                "base_unit_price": p.base_unit_price,
+                "lower": p.lower_limit_hours,
+                "upper": p.upper_limit_hours,
+                "status": "稼働中" if p.is_active else "停止中",
+                "date_label": "登録日",
+                "date_value": p.created_at,
+                "detail_url": reverse("partner_detail", args=[p.pk]),
+                "edit_url": reverse("partner_edit", args=[p.pk]),
+            })
+
+    # 日付で降順（更新日 or 登録日）
+    rows.sort(key=lambda r: r["date_value"] or timezone.datetime.min, reverse=True)
+
+    return render(request, "party_list.html", {
+        "rows": rows,
+        "filter_type": filter_type,
+    })
+# フリーランサー詳細
+@login_required
+def freelancer_detail(request, pk):
+    f = get_object_or_404(Freelancer, pk=pk)
+    return render(request, "freelancer_detail.html", {"f": f})
+
+# BP詳細
+@login_required
+def partner_detail(request, pk):
+    p = get_object_or_404(BusinessPartner, pk=pk)
+    return render(request, "partner_detail.html", {"p": p})
 
 
 # フリーランサー一覧
