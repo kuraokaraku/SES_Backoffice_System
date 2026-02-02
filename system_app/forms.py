@@ -24,13 +24,12 @@ from .models import TaskStatus
 class TaskStatusForm(forms.ModelForm):
     class Meta:
         model = TaskStatus
-        fields = ['status', 'working_hours', 'payment_amount', 'google_drive_url']
+        fields = ['timesheet_status', 'invoice_status', 'purchase_order_status', 'actual_hours']
         widgets = {
-            'status': forms.Select(attrs={'class': 'form-select'}),
-            'working_hours': forms.NumberInput(attrs={'class': 'form-control'}),
-            'payment_amount': forms.NumberInput(attrs={'class': 'form-control'}),
-            'actual_working_hours': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.1'}),
-            'google_drive_url': forms.URLInput(attrs={'class': 'form-control', 'placeholder': 'https://...'}),
+            'timesheet_status': forms.Select(attrs={'class': 'form-select'}),
+            'invoice_status': forms.Select(attrs={'class': 'form-select'}),
+            'purchase_order_status': forms.Select(attrs={'class': 'form-select'}),
+            'actual_hours': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
         }
 
 
