@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2 class="mb-4">情報編集</h2>
+
+    <form method="post">
+        {% csrf_token %}
+
+        <!-- 人材情報 -->
+        <div class="card mb-4 border-0 shadow-sm">
+            <div class="card-header" style="background-color: #4a6fa5; color: white;">人材情報</div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">氏名 <span class="text-danger">*</span></label>
+                        {{ form.name }}
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">種別 <span class="text-danger">*</span></label>
+                        {{ form.worker_type }}
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">メールアドレス</label>
+                        {{ form.email }}
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">電話番号</label>
+                        {{ form.phone }}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 案件情報 -->
+        <div class="card mb-4 border-0 shadow-sm">
+            <div class="card-header" style="background-color: #5a8f7b; color: white;">案件情報</div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">営業担当</label>
+                        {{ form.sales_owner_name }}
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">案件名</label>
+                        {{ form.project_name }}
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">勤怠表収集方法</label>
+                        {{ form.timesheet_collection_method }}
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">発注期間開始</label>
+                        {{ form.order_period_start_ym }}
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">発注期間終了</label>
+                        {{ form.order_period_end_ym }}
+                    </div>
+                    <div class="col-12 mb-3">
+                        <label class="form-label">備考</label>
+                        {{ form.notes }}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 契約情報 -->
+        <div class="card mb-4 border-0 shadow-sm">
+            <div class="card-header" style="background-color: #c9a45c; color: white;">契約情報</div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">単価（円） <span class="text-danger">*</span></label>
+                        {{ form.unit_price }}
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">契約開始日</label>
+                        {{ form.valid_from }}
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">契約終了日</label>
+                        {{ form.valid_to }}
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <label class="form-label">精算下限時間</label>
+                        {{ form.lower_limit_hour }}
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <label class="form-label">精算上限時間</label>
+                        {{ form.upper_limit_hours }}
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <label class="form-label">控除単価（円）</label>
+                        {{ form.deduction_unit_price }}
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <label class="form-label">超過単価（円）</label>
+                        {{ form.excess_unit_price }}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 上流（発注元） -->
+        <div class="card mb-4 border-0 shadow-sm">
+            <div class="card-header" style="background-color: #7a8b99; color: white;">上流（発注元）</div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">会社名</label>
+                        {{ form.upstream_company_name }}
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">担当者名</label>
+                        {{ form.upstream_contact_name }}
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">担当者メール</label>
+                        {{ form.upstream_contact_email }}
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">担当者電話</label>
+                        {{ form.upstream_contact_phone }}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 下流（発注先） -->
+        <div class="card mb-4 border-0 shadow-sm">
+            <div class="card-header" style="background-color: #8b7a6b; color: white;">下流（発注先）</div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">会社名</label>
+                        {{ form.downstream_company_name }}
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">担当者名</label>
+                        {{ form.downstream_contact_name }}
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">担当者メール</label>
+                        {{ form.downstream_contact_email }}
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">担当者電話</label>
+                        {{ form.downstream_contact_phone }}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-primary btn-lg">保存</button>
+            <a href="{% url 'assignment_detail' assignment.id %}" class="btn btn-outline-secondary btn-lg">キャンセル</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

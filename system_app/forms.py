@@ -1,6 +1,6 @@
 # system_app/forms.py
 from django import forms
-from .models import Freelancer, BusinessPartner
+from .models import Freelancer, BusinessPartner, ContactEntity
 from django.contrib.auth.models import User
 from django.contrib.auth.forms import UserCreationForm
 
@@ -85,8 +85,8 @@ class BusinessPartnerForm(forms.ModelForm):
     class Meta:
         model = BusinessPartner
         fields = [
-            'name', 'contact_person', 'base_unit_price', 
-            'lower_limit_hours', 'upper_limit_hours', 
+            'name', 'contact_person', 'base_unit_price',
+            'lower_limit_hours', 'upper_limit_hours',
             'overtime_unit_price', 'deduction_unit_price', 'is_active'
         ]
         # デザイン（Bootstrap）を適用するための設定
@@ -100,4 +100,123 @@ class BusinessPartnerForm(forms.ModelForm):
             'deduction_unit_price': forms.NumberInput(attrs={'class': 'form-control'}),
             'is_active': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
         }
+
+
+class ContactEntityForm(forms.Form):
+    """人材+アサインメント+契約 一括登録フォーム"""
+    WORKER_TYPE_CHOICES = [
+        ('', '-- 選択 --'),
+        ('フリーランス', 'フリーランス'),
+        ('BP', 'BP'),
+    ]
+
+    # --- 人材情報 ---
+    name = forms.CharField(
+        label='氏名', max_length=255,
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': '氏名'})
+    )
+    worker_type = forms.ChoiceField(
+        label='種別', choices=WORKER_TYPE_CHOICES,
+        widget=forms.Select(attrs={'class': 'form-select'})
+    )
+    email = forms.EmailField(
+        label='メールアドレス', required=False,
+        widget=forms.EmailInput(attrs={'class': 'form-control', 'placeholder': 'email@example.com'})
+    )
+    phone = forms.CharField(
+        label='電話番号', max_length=50, required=False,
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': '090-xxxx-xxxx'})
+    )
+
+    # --- 案件情報 ---
+    sales_owner_name = forms.CharField(
+        label='営業担当', max_length=255, required=False,
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': '営業担当者名'})
+    )
+    project_name = forms.CharField(
+        label='案件名', max_length=255, required=False,
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': '案件名'})
+    )
+    timesheet_collection_method = forms.CharField(
+        label='勤怠表収集方法', max_length=100, required=False,
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'メール / Slack など'})
+    )
+    order_period_start_ym = forms.DateField(
+        label='発注期間開始', required=False,
+        widget=forms.DateInput(attrs={'class': 'form-control', 'type': 'date'})
+    )
+    order_period_end_ym = forms.DateField(
+        label='発注期間終了', required=False,
+        widget=forms.DateInput(attrs={'class': 'form-control', 'type': 'date'})
+    )
+    notes = forms.CharField(
+        label='備考', required=False,
+        widget=forms.Textarea(attrs={'class': 'form-control', 'rows': 3})
+    )
+
+    # --- 契約情報 ---
+    unit_price = forms.IntegerField(
+        label='単価（円）',
+        widget=forms.NumberInput(attrs={'class': 'form-control', 'placeholder': '500000'})
+    )
+    valid_from = forms.DateField(
+        label='契約開始日', required=False,
+        widget=forms.DateInput(attrs={'class': 'form-control', 'type': 'date'})
+    )
+    valid_to = forms.DateField(
+        label='契約終了日', required=False,
+        widget=forms.DateInput(attrs={'class': 'form-control', 'type': 'date'})
+    )
+    lower_limit_hour = forms.DecimalField(
+        label='精算下限時間', required=False,
+        widget=forms.NumberInput(attrs={'class': 'form-control', 'placeholder': '140', 'step': '0.5'})
+    )
+    upper_limit_hours = forms.DecimalField(
+        label='精算上限時間', required=False,
+        widget=forms.NumberInput(attrs={'class': 'form-control', 'placeholder': '180', 'step': '0.5'})
+    )
+    deduction_unit_price = forms.IntegerField(
+        label='控除単価（円）', required=False,
+        widget=forms.NumberInput(attrs={'class': 'form-control', 'placeholder': '3000'})
+    )
+    excess_unit_price = forms.IntegerField(
+        label='超過単価（円）', required=False,
+        widget=forms.NumberInput(attrs={'class': 'form-control', 'placeholder': '3500'})
+    )
+
+    # --- 上流（発注元）---
+    upstream_company_name = forms.CharField(
+        label='会社名', max_length=255, required=False,
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': '株式会社〇〇'})
+    )
+    upstream_contact_name = forms.CharField(
+        label='担当者名', max_length=255, required=False,
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': '担当者名'})
+    )
+    upstream_contact_email = forms.EmailField(
+        label='担当者メール', required=False,
+        widget=forms.EmailInput(attrs={'class': 'form-control'})
+    )
+    upstream_contact_phone = forms.CharField(
+        label='担当者電話', max_length=50, required=False,
+        widget=forms.TextInput(attrs={'class': 'form-control'})
+    )
+
+    # --- 下流（発注先）---
+    downstream_company_name = forms.CharField(
+        label='会社名', max_length=255, required=False,
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': '株式会社〇〇'})
+    )
+    downstream_contact_name = forms.CharField(
+        label='担当者名', max_length=255, required=False,
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': '担当者名'})
+    )
+    downstream_contact_email = forms.EmailField(
+        label='担当者メール', required=False,
+        widget=forms.EmailInput(attrs={'class': 'form-control'})
+    )
+    downstream_contact_phone = forms.CharField(
+        label='担当者電話', max_length=50, required=False,
+        widget=forms.TextInput(attrs={'class': 'form-control'})
+    )
 

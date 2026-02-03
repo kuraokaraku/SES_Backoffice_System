@@ -1,0 +1,16 @@
+{% extends 'base.html' %}
+{% block title %}タスク一括生成{% endblock %}
+
+{% block content %}
+<h2 class="mb-4">タスク一括生成</h2>
+
+<div class="alert alert-info">
+    <strong>{{ monthly.year }}年{{ monthly.month }}月</strong> に対して、有効な全台帳のタスクを一括生成します。
+</div>
+
+<form method="post">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-primary">生成する</button>
+    <a href="{% url 'monthly_detail' monthly.pk %}" class="btn btn-secondary">キャンセル</a>
+</form>
+{% endblock %}

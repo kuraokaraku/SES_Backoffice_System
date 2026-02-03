@@ -106,8 +106,8 @@ class Assignment(models.Model):
         null=True,
     )
 
-    order_period_start_ym = models.CharField(max_length=7, blank=True, null=True)  # "YYYY-MM"
-    order_period_end_ym = models.CharField(max_length=7, blank=True, null=True)    # "YYYY-MM"
+    order_period_start_ym = models.DateField(blank=True, null=True)
+    order_period_end_ym = models.DateField(blank=True, null=True)
 
     def __str__(self):
         return f"Assignment {self.id}"
@@ -165,16 +165,20 @@ class TaskStatus(models.Model):
         MonthlyProcess,
         on_delete=models.CASCADE,
         related_name="task_statuses",
+        null=True,
+        blank=True,
     )
     assignment = models.ForeignKey(
         Assignment,
         on_delete=models.CASCADE,
         related_name="task_statuses",
+        null=True,
+        blank=True,
     )
 
-    timesheet_status = models.CharField(max_length=30)       # "NOT_REQUIRED/PENDING/RECEIVED"
-    invoice_status = models.CharField(max_length=30)         # "NOT_REQUIRED/PENDING/RECEIVED"
-    purchase_order_status = models.CharField(max_length=30)  # "NOT_REQUIRED/PENDING/RECEIVED"
+    timesheet_status = models.CharField(max_length=30, blank=True, default="")
+    invoice_status = models.CharField(max_length=30, blank=True, default="")
+    purchase_order_status = models.CharField(max_length=30, blank=True, default="")
     actual_hours = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
 
     def __str__(self):
