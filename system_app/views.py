@@ -2,8 +2,8 @@
 import os
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
-from .models import MonthlyProcess, TaskStatus, Freelancer, PurchaseOrder, BusinessPartner, BusinessCard
-from .forms import FreelancerForm, TaskStatusForm, BusinessPartnerForm
+from .models import MonthlyProcess, TaskStatus, Freelancer, PurchaseOrder, BusinessPartner, BusinessCard, Assignment, ServiceContract, ContactEntity, ContactEmail
+from .forms import FreelancerForm, TaskStatusForm, BusinessPartnerForm, ContactEntityForm
 from django.utils import timezone
 
 from django.contrib.auth.models import User
@@ -12,6 +12,7 @@ from django.contrib.admin.views.decorators import staff_member_required
 from .forms import UserEditForm
 
 from django.urls import reverse
+from django.db.models import Q
 
 from django.http import FileResponse, Http404
 #from .services.email_service import search_and_sync_emails # 検索用サービス
@@ -19,6 +20,21 @@ from .services.email_service import search_and_save_to_vps
 
 from django.http import HttpResponseForbidden
 
+
+
+def _save_contact_emails(request, prefix, contact_person):
+    """POSTの動的メールフィールドをContactEmailに保存"""
+    contact_person.extra_emails.all().delete()
+    emails = request.POST.getlist(f'{prefix}_emails[]')
+    descs = request.POST.getlist(f'{prefix}_email_descs[]')
+    for email, desc in zip(emails, descs):
+        email = email.strip()
+        if email:
+            ContactEmail.objects.create(
+                contact_person=contact_person,
+                email=email,
+                description=desc.strip(),
+            )
 
 
 def index(request):
@@ -78,65 +94,464 @@ def user_edit(request, pk):
 @login_required
 def party_list(request):
     """
-    Freelancer / BusinessPartner を同じ一覧で表示する
-    フィルタ: ?type=all|freelancer|partner
+    Assignment ベースで人材一覧を表示
     """
-    filter_type = request.GET.get("type", "all")  # all / freelancer / partner
+    from datetime import date
+    today = date.today()
+
+    # 検索・フィルタ
+    search_name = request.GET.get("search", "").strip()
+    filter_type = request.GET.get("worker_type", "")
+    show_inactive = request.GET.get("show_inactive", "") == "1"
+
+    assignments = Assignment.objects.select_related(
+        'worker_entity', 'sales_owner_entity'
+    ).prefetch_related('contracts').all()
+
+    # デフォルトは稼働中のみ表示
+    if not show_inactive:
+        assignments = assignments.filter(is_active=True)
+
+    # 名前検索
+    if search_name:
+        assignments = assignments.filter(worker_entity__name__icontains=search_name)
+
+    # worker_type フィルタ
+    if filter_type:
+        assignments = assignments.filter(worker_entity__worker_type=filter_type)
 
     rows = []
+    for a in assignments:
+        # 現行の契約を取得（valid_to が NULL または今日以降）
+        current_contract = a.contracts.filter(
+            Q(valid_to__isnull=True) | Q(valid_to__gte=today)
+        ).filter(
+            Q(valid_from__isnull=True) | Q(valid_from__lte=today)
+        ).first()
 
-    # 個人事業主
-    if filter_type in ("all", "freelancer"):
-        freelancers = Freelancer.objects.all().order_by("-updated_at")
-        for f in freelancers:
-            # 契約状態
-            # contract_start/end がどっちか入ってたら「契約設定あり」扱いにする
-            # もう少し厳密にするなら today と比較して "契約中/未開始/終了" にできる
-            status = "-"
-            if f.contract_start or f.contract_end:
-                status = "契約あり"
+        # 単価
+        unit_price = current_contract.unit_price if current_contract else None
 
-            rows.append({
-                "kind": "個人事業主",
-                "kind_key": "freelancer",
-                "name": f.name,
-                "sub": f.client_name or "",
-                "base_unit_price": f.base_unit_price,
-                "lower": f.lower_limit_hours,
-                "upper": f.upper_limit_hours,
-                "status": status,
-                "date_label": "更新日",
-                "date_value": f.updated_at,
-                "detail_url": reverse("freelancer_detail", args=[f.pk]),
-                "edit_url": reverse("freelancer_update", args=[f.pk]),
-            })
+        rows.append({
+            "id": a.id,
+            "name": a.worker_entity.name if a.worker_entity else "-",
+            "worker_type": a.worker_entity.worker_type if a.worker_entity else "-",
+            "sales_owner": a.sales_owner_entity.name if a.sales_owner_entity else "-",
+            "is_active": a.is_active,
+            "unit_price": unit_price,
+            "project_name": a.project_name or "-",
+            "order_period_end_ym": a.order_period_end_ym,
+        })
 
-    # 提携パートナー
-    if filter_type in ("all", "partner"):
-        partners = BusinessPartner.objects.all().order_by("-created_at")
-        for p in partners:
-            rows.append({
-                "kind": "BP",
-                "kind_key": "partner",
-                "name": p.name,
-                "sub": p.contact_person or "",
-                "base_unit_price": p.base_unit_price,
-                "lower": p.lower_limit_hours,
-                "upper": p.upper_limit_hours,
-                "status": "稼働中" if p.is_active else "停止中",
-                "date_label": "登録日",
-                "date_value": p.created_at,
-                "detail_url": reverse("partner_detail", args=[p.pk]),
-                "edit_url": reverse("partner_edit", args=[p.pk]),
-            })
-
-    # 日付で降順（更新日 or 登録日）
-    rows.sort(key=lambda r: r["date_value"] or timezone.datetime.min, reverse=True)
+    # worker_type の選択肢を取得
+    worker_types = ContactEntity.objects.filter(
+        kind="PERSON", worker_type__isnull=False
+    ).values_list('worker_type', flat=True).distinct()
 
     return render(request, "party_list.html", {
         "rows": rows,
+        "search_name": search_name,
         "filter_type": filter_type,
+        "worker_types": worker_types,
+        "show_inactive": show_inactive,
     })
+
+
+@login_required
+def contact_entity_create(request):
+    """新規人材+アサインメント+契約 一括登録"""
+    from .models import EntityContactPerson
+
+    if request.method == 'POST':
+        form = ContactEntityForm(request.POST)
+        if form.is_valid():
+            data = form.cleaned_data
+
+            # 1. 人材（worker）作成
+            worker = ContactEntity.objects.create(
+                kind='PERSON',
+                name=data['name'],
+                worker_type=data['worker_type'],
+                email=data['email'] or None,
+                phone=data['phone'] or None,
+            )
+
+            # 2. 上位会社・担当者作成（任意）
+            upstream_entity = None
+            upstream_contact = None
+            if data.get('upstream_company_name'):
+                upstream_entity = ContactEntity.objects.create(
+                    kind='COMPANY',
+                    name=data['upstream_company_name'],
+                    address=data.get('upstream_address') or None,
+                    mailing_address=data.get('upstream_mailing_address') or None,
+                    company_phone=data.get('upstream_company_phone') or None,
+                )
+                if data.get('upstream_contact_name'):
+                    upstream_contact = EntityContactPerson.objects.create(
+                        corporate_entity=upstream_entity,
+                        name=data['upstream_contact_name'],
+                        phone=data.get('upstream_contact_phone') or None,
+                        line_available=data.get('upstream_line_available', False),
+                    )
+                    _save_contact_emails(request, 'upstream', upstream_contact)
+
+            # 3. 下位会社・担当者作成（任意）
+            downstream_entity = None
+            downstream_contact = None
+            if data.get('downstream_company_name'):
+                downstream_entity = ContactEntity.objects.create(
+                    kind='COMPANY',
+                    name=data['downstream_company_name'],
+                    address=data.get('downstream_address') or None,
+                    mailing_address=data.get('downstream_mailing_address') or None,
+                    company_phone=data.get('downstream_company_phone') or None,
+                    has_invoice_registration=data.get('downstream_has_invoice_registration', False),
+                )
+                if data.get('downstream_contact_name'):
+                    downstream_contact = EntityContactPerson.objects.create(
+                        corporate_entity=downstream_entity,
+                        name=data['downstream_contact_name'],
+                        phone=data.get('downstream_contact_phone') or None,
+                        line_available=data.get('downstream_line_available', False),
+                    )
+                    _save_contact_emails(request, 'downstream', downstream_contact)
+
+            # 4. 営業担当作成（任意）
+            sales_owner = None
+            if data.get('sales_owner_name'):
+                sales_owner = ContactEntity.objects.create(
+                    kind='PERSON',
+                    name=data['sales_owner_name'],
+                )
+
+            # 5. Assignment作成
+            # upstream/downstreamが無い場合はworker自身を設定（必須フィールドのため）
+            assignment = Assignment.objects.create(
+                worker_entity=worker,
+                sales_owner_entity=sales_owner or worker,
+                upstream_entity=upstream_entity or worker,
+                upstream_contact_person=upstream_contact,
+                downstream_entity=downstream_entity or worker,
+                downstream_contact_person=downstream_contact,
+                project_name=data.get('project_name') or None,
+                order_period_start_ym=data.get('order_period_start_ym') or None,
+                order_period_end_ym=data.get('order_period_end_ym') or None,
+                notes=data.get('notes') or None,
+                is_active=data.get('is_active', True),
+            )
+
+            # 6. ServiceContract作成
+            is_fixed_fee = data.get('is_fixed_fee', False)
+            ds_is_fixed_fee = data.get('downstream_is_fixed_fee', False)
+            ServiceContract.objects.create(
+                assignment=assignment,
+                unit_price=data['unit_price'],
+                is_fixed_fee=is_fixed_fee,
+                travel_expense_included=data.get('travel_expense_included', False),
+                valid_from=data.get('valid_from'),
+                valid_to=data.get('valid_to'),
+                # 固定報酬の場合は精算系をNullに
+                lower_limit_hour=None if is_fixed_fee else data.get('lower_limit_hour'),
+                upper_limit_hours=None if is_fixed_fee else data.get('upper_limit_hours'),
+                deduction_unit_price=None if is_fixed_fee else data.get('deduction_unit_price'),
+                excess_unit_price=None if is_fixed_fee else data.get('excess_unit_price'),
+                settlement_unit_minutes=None if is_fixed_fee else data.get('settlement_unit_minutes'),
+                upstream_timesheet_collection_method=data.get('upstream_timesheet_collection_method') or None,
+                downstream_timesheet_collection_method=data.get('downstream_timesheet_collection_method') or None,
+                upstream_payment_terms=data.get('upstream_payment_terms'),
+                downstream_payment_terms=data.get('downstream_payment_terms'),
+                bank_holiday_handling=data.get('bank_holiday_handling') or None,
+                downstream_bank_holiday_handling=data.get('downstream_bank_holiday_handling') or None,
+                timesheet_due_date=data.get('timesheet_due_date'),
+                # 下位契約条件
+                downstream_unit_price=data.get('downstream_unit_price'),
+                downstream_is_fixed_fee=ds_is_fixed_fee,
+                downstream_lower_limit_hour=None if ds_is_fixed_fee else data.get('downstream_lower_limit_hour'),
+                downstream_upper_limit_hours=None if ds_is_fixed_fee else data.get('downstream_upper_limit_hours'),
+                downstream_deduction_unit_price=None if ds_is_fixed_fee else data.get('downstream_deduction_unit_price'),
+                downstream_excess_unit_price=None if ds_is_fixed_fee else data.get('downstream_excess_unit_price'),
+                downstream_settlement_unit_minutes=None if ds_is_fixed_fee else data.get('downstream_settlement_unit_minutes'),
+            )
+
+            return redirect('party_list')
+    else:
+        form = ContactEntityForm()
+    return render(request, 'contact_entity_form.html', {'form': form})
+
+
+@login_required
+def assignment_detail(request, pk):
+    """アサインメント詳細"""
+    from datetime import date
+    today = date.today()
+
+    assignment = get_object_or_404(
+        Assignment.objects.select_related(
+            'worker_entity', 'sales_owner_entity',
+            'upstream_entity', 'downstream_entity',
+            'upstream_contact_person', 'downstream_contact_person'
+        ).prefetch_related('contracts'),
+        pk=pk
+    )
+
+    # 現行契約
+    current_contract = assignment.contracts.filter(
+        Q(valid_to__isnull=True) | Q(valid_to__gte=today)
+    ).filter(
+        Q(valid_from__isnull=True) | Q(valid_from__lte=today)
+    ).first()
+
+    return render(request, 'assignment_detail.html', {
+        'assignment': assignment,
+        'current_contract': current_contract,
+    })
+
+
+@login_required
+def assignment_edit(request, pk):
+    """アサインメント編集"""
+    from .models import EntityContactPerson
+    from datetime import date
+    today = date.today()
+
+    assignment = get_object_or_404(
+        Assignment.objects.select_related(
+            'worker_entity', 'sales_owner_entity',
+            'upstream_entity', 'downstream_entity',
+            'upstream_contact_person', 'downstream_contact_person'
+        ).prefetch_related('contracts'),
+        pk=pk
+    )
+
+    # 現行契約
+    current_contract = assignment.contracts.filter(
+        Q(valid_to__isnull=True) | Q(valid_to__gte=today)
+    ).filter(
+        Q(valid_from__isnull=True) | Q(valid_from__lte=today)
+    ).first()
+
+    if request.method == 'POST':
+        form = ContactEntityForm(request.POST)
+        if form.is_valid():
+            data = form.cleaned_data
+
+            # 1. 人材（worker）更新
+            worker = assignment.worker_entity
+            worker.name = data['name']
+            worker.worker_type = data['worker_type']
+            worker.email = data['email'] or None
+            worker.phone = data['phone'] or None
+            worker.save()
+
+            # 2. 営業担当更新
+            if data.get('sales_owner_name'):
+                if assignment.sales_owner_entity and assignment.sales_owner_entity != worker:
+                    assignment.sales_owner_entity.name = data['sales_owner_name']
+                    assignment.sales_owner_entity.save()
+                else:
+                    sales_owner = ContactEntity.objects.create(
+                        kind='PERSON',
+                        name=data['sales_owner_name'],
+                    )
+                    assignment.sales_owner_entity = sales_owner
+
+            # 3. 上位更新
+            if data.get('upstream_company_name'):
+                if assignment.upstream_entity and assignment.upstream_entity != worker:
+                    ue = assignment.upstream_entity
+                    ue.name = data['upstream_company_name']
+                    ue.address = data.get('upstream_address') or None
+                    ue.mailing_address = data.get('upstream_mailing_address') or None
+                    ue.company_phone = data.get('upstream_company_phone') or None
+                    ue.save()
+                else:
+                    assignment.upstream_entity = ContactEntity.objects.create(
+                        kind='COMPANY',
+                        name=data['upstream_company_name'],
+                        address=data.get('upstream_address') or None,
+                        mailing_address=data.get('upstream_mailing_address') or None,
+                        company_phone=data.get('upstream_company_phone') or None,
+                    )
+                if data.get('upstream_contact_name'):
+                    if assignment.upstream_contact_person:
+                        ucp = assignment.upstream_contact_person
+                        ucp.name = data['upstream_contact_name']
+                        ucp.phone = data.get('upstream_contact_phone') or None
+                        ucp.line_available = data.get('upstream_line_available', False)
+                        ucp.save()
+                    else:
+                        ucp = EntityContactPerson.objects.create(
+                            corporate_entity=assignment.upstream_entity,
+                            name=data['upstream_contact_name'],
+                            phone=data.get('upstream_contact_phone') or None,
+                            line_available=data.get('upstream_line_available', False),
+                        )
+                        assignment.upstream_contact_person = ucp
+                    _save_contact_emails(request, 'upstream', ucp)
+
+            # 4. 下位更新
+            if data.get('downstream_company_name'):
+                if assignment.downstream_entity and assignment.downstream_entity != worker:
+                    de = assignment.downstream_entity
+                    de.name = data['downstream_company_name']
+                    de.address = data.get('downstream_address') or None
+                    de.mailing_address = data.get('downstream_mailing_address') or None
+                    de.company_phone = data.get('downstream_company_phone') or None
+                    de.has_invoice_registration = data.get('downstream_has_invoice_registration', False)
+                    de.save()
+                else:
+                    assignment.downstream_entity = ContactEntity.objects.create(
+                        kind='COMPANY',
+                        name=data['downstream_company_name'],
+                        address=data.get('downstream_address') or None,
+                        mailing_address=data.get('downstream_mailing_address') or None,
+                        company_phone=data.get('downstream_company_phone') or None,
+                        has_invoice_registration=data.get('downstream_has_invoice_registration', False),
+                    )
+                if data.get('downstream_contact_name'):
+                    if assignment.downstream_contact_person:
+                        dcp = assignment.downstream_contact_person
+                        dcp.name = data['downstream_contact_name']
+                        dcp.phone = data.get('downstream_contact_phone') or None
+                        dcp.line_available = data.get('downstream_line_available', False)
+                        dcp.save()
+                    else:
+                        dcp = EntityContactPerson.objects.create(
+                            corporate_entity=assignment.downstream_entity,
+                            name=data['downstream_contact_name'],
+                            phone=data.get('downstream_contact_phone') or None,
+                            line_available=data.get('downstream_line_available', False),
+                        )
+                        assignment.downstream_contact_person = dcp
+                    _save_contact_emails(request, 'downstream', dcp)
+
+            # 5. Assignment更新
+            assignment.project_name = data.get('project_name') or None
+            assignment.order_period_start_ym = data.get('order_period_start_ym') or None
+            assignment.order_period_end_ym = data.get('order_period_end_ym') or None
+            assignment.notes = data.get('notes') or None
+            assignment.is_active = data.get('is_active', True)
+            assignment.save()
+
+            # 6. 契約更新
+            is_fixed_fee = data.get('is_fixed_fee', False)
+            ds_is_fixed_fee = data.get('downstream_is_fixed_fee', False)
+            contract_fields = dict(
+                unit_price=data['unit_price'],
+                is_fixed_fee=is_fixed_fee,
+                travel_expense_included=data.get('travel_expense_included', False),
+                valid_from=data.get('valid_from'),
+                valid_to=data.get('valid_to'),
+                lower_limit_hour=None if is_fixed_fee else data.get('lower_limit_hour'),
+                upper_limit_hours=None if is_fixed_fee else data.get('upper_limit_hours'),
+                deduction_unit_price=None if is_fixed_fee else data.get('deduction_unit_price'),
+                excess_unit_price=None if is_fixed_fee else data.get('excess_unit_price'),
+                settlement_unit_minutes=None if is_fixed_fee else data.get('settlement_unit_minutes'),
+                upstream_timesheet_collection_method=data.get('upstream_timesheet_collection_method') or None,
+                downstream_timesheet_collection_method=data.get('downstream_timesheet_collection_method') or None,
+                upstream_payment_terms=data.get('upstream_payment_terms'),
+                downstream_payment_terms=data.get('downstream_payment_terms'),
+                bank_holiday_handling=data.get('bank_holiday_handling') or None,
+                downstream_bank_holiday_handling=data.get('downstream_bank_holiday_handling') or None,
+                timesheet_due_date=data.get('timesheet_due_date'),
+                # 下位契約条件
+                downstream_unit_price=data.get('downstream_unit_price'),
+                downstream_is_fixed_fee=ds_is_fixed_fee,
+                downstream_lower_limit_hour=None if ds_is_fixed_fee else data.get('downstream_lower_limit_hour'),
+                downstream_upper_limit_hours=None if ds_is_fixed_fee else data.get('downstream_upper_limit_hours'),
+                downstream_deduction_unit_price=None if ds_is_fixed_fee else data.get('downstream_deduction_unit_price'),
+                downstream_excess_unit_price=None if ds_is_fixed_fee else data.get('downstream_excess_unit_price'),
+                downstream_settlement_unit_minutes=None if ds_is_fixed_fee else data.get('downstream_settlement_unit_minutes'),
+            )
+            if current_contract:
+                for k, v in contract_fields.items():
+                    setattr(current_contract, k, v)
+                current_contract.save()
+            else:
+                ServiceContract.objects.create(assignment=assignment, **contract_fields)
+
+            return redirect('assignment_detail', pk=pk)
+    else:
+        # 初期値設定
+        initial = {
+            'name': assignment.worker_entity.name if assignment.worker_entity else '',
+            'worker_type': assignment.worker_entity.worker_type if assignment.worker_entity else '',
+            'email': assignment.worker_entity.email if assignment.worker_entity else '',
+            'phone': assignment.worker_entity.phone if assignment.worker_entity else '',
+            'sales_owner_name': assignment.sales_owner_entity.name if assignment.sales_owner_entity and assignment.sales_owner_entity != assignment.worker_entity else '',
+            'project_name': assignment.project_name or '',
+            'order_period_start_ym': assignment.order_period_start_ym or '',
+            'order_period_end_ym': assignment.order_period_end_ym or '',
+            'notes': assignment.notes or '',
+            'is_active': assignment.is_active,
+        }
+        # 契約情報
+        if current_contract:
+            initial.update({
+                'unit_price': current_contract.unit_price,
+                'is_fixed_fee': current_contract.is_fixed_fee,
+                'travel_expense_included': current_contract.travel_expense_included,
+                'valid_from': current_contract.valid_from,
+                'valid_to': current_contract.valid_to,
+                'lower_limit_hour': current_contract.lower_limit_hour,
+                'upper_limit_hours': current_contract.upper_limit_hours,
+                'deduction_unit_price': current_contract.deduction_unit_price,
+                'excess_unit_price': current_contract.excess_unit_price,
+                'settlement_unit_minutes': current_contract.settlement_unit_minutes,
+                'upstream_timesheet_collection_method': current_contract.upstream_timesheet_collection_method or '',
+                'downstream_timesheet_collection_method': current_contract.downstream_timesheet_collection_method or '',
+                'upstream_payment_terms': current_contract.upstream_payment_terms,
+                'downstream_payment_terms': current_contract.downstream_payment_terms,
+                'bank_holiday_handling': current_contract.bank_holiday_handling or '',
+                'downstream_bank_holiday_handling': current_contract.downstream_bank_holiday_handling or '',
+                'timesheet_due_date': current_contract.timesheet_due_date,
+                # 下位契約条件
+                'downstream_unit_price': current_contract.downstream_unit_price,
+                'downstream_is_fixed_fee': current_contract.downstream_is_fixed_fee,
+                'downstream_lower_limit_hour': current_contract.downstream_lower_limit_hour,
+                'downstream_upper_limit_hours': current_contract.downstream_upper_limit_hours,
+                'downstream_deduction_unit_price': current_contract.downstream_deduction_unit_price,
+                'downstream_excess_unit_price': current_contract.downstream_excess_unit_price,
+                'downstream_settlement_unit_minutes': current_contract.downstream_settlement_unit_minutes,
+            })
+        # 上位
+        if assignment.upstream_entity and assignment.upstream_entity != assignment.worker_entity:
+            ue = assignment.upstream_entity
+            initial['upstream_company_name'] = ue.name
+            initial['upstream_address'] = ue.address or ''
+            initial['upstream_mailing_address'] = ue.mailing_address or ''
+            initial['upstream_company_phone'] = ue.company_phone or ''
+        if assignment.upstream_contact_person:
+            ucp = assignment.upstream_contact_person
+            initial['upstream_contact_name'] = ucp.name
+            initial['upstream_contact_phone'] = ucp.phone or ''
+            initial['upstream_line_available'] = ucp.line_available
+            # メールは template の JS で展開
+        # 下位
+        if assignment.downstream_entity and assignment.downstream_entity != assignment.worker_entity:
+            de = assignment.downstream_entity
+            initial['downstream_company_name'] = de.name
+            initial['downstream_address'] = de.address or ''
+            initial['downstream_mailing_address'] = de.mailing_address or ''
+            initial['downstream_company_phone'] = de.company_phone or ''
+            initial['downstream_has_invoice_registration'] = de.has_invoice_registration
+        if assignment.downstream_contact_person:
+            dcp = assignment.downstream_contact_person
+            initial['downstream_contact_name'] = dcp.name
+            initial['downstream_contact_phone'] = dcp.phone or ''
+            initial['downstream_line_available'] = dcp.line_available
+            # メールは template の JS で展開
+            extra = dcp.extra_emails.first()
+            if extra:
+                initial['downstream_contact_email_2'] = extra.email
+                initial['downstream_contact_email_2_desc'] = extra.description
+
+        form = ContactEntityForm(initial=initial)
+
+    return render(request, 'assignment_edit.html', {'form': form, 'assignment': assignment})
+
+
 # フリーランサー詳細
 @login_required
 def freelancer_detail(request, pk):

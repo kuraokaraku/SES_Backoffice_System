@@ -10,8 +10,11 @@ urlpatterns = [
     path('users/create/', views.user_create, name='user_create'),
     path('users/edit/<int:pk>/', views.user_edit, name='user_edit'),
 
-    # --- 統合一覧 ---
+    # --- 人材管理（Assignment ベース） ---
     path("party/", views.party_list, name="party_list"),
+    path("party/new/", views.contact_entity_create, name="contact_entity_create"),
+    path("assignment/<int:pk>/", views.assignment_detail, name="assignment_detail"),
+    path("assignment/<int:pk>/edit/", views.assignment_edit, name="assignment_edit"),
 
     
     # --- 個人事業主 ---

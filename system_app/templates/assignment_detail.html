@@ -1,0 +1,276 @@
+{% extends "base.html" %}
+{% load humanize %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="mb-0">詳細情報</h2>
+        <div>
+            <a href="{% url 'assignment_edit' assignment.id %}" class="btn btn-outline-primary">編集</a>
+            <a href="{% url 'party_list' %}" class="btn btn-outline-secondary">一覧に戻る</a>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- 人材情報 -->
+        <div class="col-md-6 mb-4">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header" style="background-color: #4a6fa5; color: white;">人材情報</div>
+                <div class="card-body">
+                    <dl class="row mb-0">
+                        <dt class="col-sm-4">氏名</dt>
+                        <dd class="col-sm-8">{{ assignment.worker_entity.name|default:"-" }}</dd>
+                        <dt class="col-sm-4">種別</dt>
+                        <dd class="col-sm-8">{{ assignment.worker_entity.worker_type|default:"-" }}</dd>
+                        <dt class="col-sm-4">メール</dt>
+                        <dd class="col-sm-8">{{ assignment.worker_entity.email|default:"-" }}</dd>
+                        <dt class="col-sm-4">電話</dt>
+                        <dd class="col-sm-8">{{ assignment.worker_entity.phone|default:"-" }}</dd>
+                    </dl>
+                </div>
+            </div>
+        </div>
+
+        <!-- 案件情報 -->
+        <div class="col-md-6 mb-4">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header" style="background-color: #5a8f7b; color: white;">案件情報</div>
+                <div class="card-body">
+                    <dl class="row mb-0">
+                        <dt class="col-sm-4">営業担当</dt>
+                        <dd class="col-sm-8">{{ assignment.sales_owner_entity.name|default:"-" }}</dd>
+                        <dt class="col-sm-4">案件名</dt>
+                        <dd class="col-sm-8">{{ assignment.project_name|default:"-" }}</dd>
+                        <dt class="col-sm-4">発注期間</dt>
+                        <dd class="col-sm-8">{{ assignment.order_period_start_ym|default:"?" }} 〜 {{ assignment.order_period_end_ym|default:"継続中" }}</dd>
+                    </dl>
+                </div>
+            </div>
+        </div>
+
+        <!-- 上位契約情報 -->
+        <div class="col-12 mb-4">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header" style="background-color: #c9a45c; color: white;">上位契約情報</div>
+                <div class="card-body">
+                    {% if current_contract %}
+                    <div class="row">
+                        <div class="col-md-3 mb-2">
+                            <small class="text-muted">単価</small>
+                            <div class="fs-5 fw-bold">
+                                {{ current_contract.unit_price|intcomma }}円
+                                {% if current_contract.is_fixed_fee %}
+                                <span class="badge bg-info ms-2">固定報酬</span>
+                                {% endif %}
+                                {% if current_contract.travel_expense_included %}
+                                <span class="badge bg-success ms-1">交通費込</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="col-md-3 mb-2">
+                            <small class="text-muted">契約期間</small>
+                            <div>{{ current_contract.valid_from|default:"?" }} 〜 {{ current_contract.valid_to|default:"継続中" }}</div>
+                        </div>
+                        {% if not current_contract.is_fixed_fee %}
+                        <div class="col-md-2 mb-2">
+                            <small class="text-muted">精算幅</small>
+                            <div>{{ current_contract.lower_limit_hour|default:"-" }} 〜 {{ current_contract.upper_limit_hours|default:"-" }}h</div>
+                        </div>
+                        <div class="col-md-2 mb-2">
+                            <small class="text-muted">控除単価</small>
+                            <div>{% if current_contract.deduction_unit_price %}{{ current_contract.deduction_unit_price|intcomma }}円{% else %}-{% endif %}</div>
+                        </div>
+                        <div class="col-md-2 mb-2">
+                            <small class="text-muted">超過単価</small>
+                            <div>{% if current_contract.excess_unit_price %}{{ current_contract.excess_unit_price|intcomma }}円{% else %}-{% endif %}</div>
+                        </div>
+                        <div class="col-md-2 mb-2">
+                            <small class="text-muted">精算単位</small>
+                            <div>{{ current_contract.settlement_unit_minutes|default:"-" }}分</div>
+                        </div>
+                        {% endif %}
+                        <div class="col-md-3 mb-2">
+                            <small class="text-muted">勤務表回収手段</small>
+                            <div>{{ current_contract.upstream_timesheet_collection_method|default:"-" }}</div>
+                        </div>
+                        <div class="col-md-3 mb-2">
+                            <small class="text-muted">支払サイト</small>
+                            <div>{% if current_contract.upstream_payment_terms %}{{ current_contract.upstream_payment_terms }}日{% else %}-{% endif %}</div>
+                        </div>
+                        <div class="col-md-3 mb-2">
+                            <small class="text-muted">金融機関休業日</small>
+                            <div>{{ current_contract.bank_holiday_handling|default:"-" }}</div>
+                        </div>
+                        <div class="col-md-3 mb-2">
+                            <small class="text-muted">勤務表締め日</small>
+                            <div>{{ current_contract.timesheet_due_date|default:"-" }}</div>
+                        </div>
+                    </div>
+                    {% else %}
+                    <p class="text-muted mb-0">現行の契約がありません</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- 下位契約情報 -->
+        {% if current_contract and current_contract.downstream_unit_price %}
+        <div class="col-12 mb-4">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header" style="background-color: #d4816b; color: white;">下位契約情報</div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-3 mb-2">
+                            <small class="text-muted">単価</small>
+                            <div class="fs-5 fw-bold">
+                                {{ current_contract.downstream_unit_price|intcomma }}円
+                                {% if current_contract.downstream_is_fixed_fee %}
+                                <span class="badge bg-info ms-2">固定報酬</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% if not current_contract.downstream_is_fixed_fee %}
+                        <div class="col-md-2 mb-2">
+                            <small class="text-muted">精算幅</small>
+                            <div>{{ current_contract.downstream_lower_limit_hour|default:"-" }} 〜 {{ current_contract.downstream_upper_limit_hours|default:"-" }}h</div>
+                        </div>
+                        <div class="col-md-2 mb-2">
+                            <small class="text-muted">控除単価</small>
+                            <div>{% if current_contract.downstream_deduction_unit_price %}{{ current_contract.downstream_deduction_unit_price|intcomma }}円{% else %}-{% endif %}</div>
+                        </div>
+                        <div class="col-md-2 mb-2">
+                            <small class="text-muted">超過単価</small>
+                            <div>{% if current_contract.downstream_excess_unit_price %}{{ current_contract.downstream_excess_unit_price|intcomma }}円{% else %}-{% endif %}</div>
+                        </div>
+                        <div class="col-md-2 mb-2">
+                            <small class="text-muted">精算単位</small>
+                            <div>{{ current_contract.downstream_settlement_unit_minutes|default:"-" }}分</div>
+                        </div>
+                        <div class="col-md-3 mb-2">
+                            <small class="text-muted">勤務表回収手段</small>
+                            <div>{{ current_contract.downstream_timesheet_collection_method|default:"-" }}</div>
+                        </div>
+                        <div class="col-md-3 mb-2">
+                            <small class="text-muted">支払サイト</small>
+                            <div>{% if current_contract.downstream_payment_terms %}{{ current_contract.downstream_payment_terms }}日{% else %}-{% endif %}</div>
+                        </div>
+                        <div class="col-md-3 mb-2">
+                            <small class="text-muted">金融機関休業日</small>
+                            <div>{{ current_contract.downstream_bank_holiday_handling|default:"-" }}</div>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- 上位（発注元） -->
+        <div class="col-md-6 mb-4">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header" style="background-color: #7a8b99; color: white;">上位（発注元）</div>
+                <div class="card-body">
+                    <dl class="row mb-0">
+                        <dt class="col-sm-4">会社名</dt>
+                        <dd class="col-sm-8">{{ assignment.upstream_entity.name|default:"-" }}</dd>
+                        <dt class="col-sm-4">会社電話</dt>
+                        <dd class="col-sm-8">{{ assignment.upstream_entity.company_phone|default:"-" }}</dd>
+                        <dt class="col-sm-4">住所</dt>
+                        <dd class="col-sm-8">{{ assignment.upstream_entity.address|default:"-" }}</dd>
+                        <dt class="col-sm-4">送付先</dt>
+                        <dd class="col-sm-8">{{ assignment.upstream_entity.mailing_address|default:"-" }}</dd>
+                    </dl>
+                    <hr>
+                    <dl class="row mb-0">
+                        <dt class="col-sm-4">担当者</dt>
+                        <dd class="col-sm-8">{{ assignment.upstream_contact_person.name|default:"-" }}</dd>
+                        <dt class="col-sm-4">メール</dt>
+                        <dd class="col-sm-8">
+                            {% if assignment.upstream_contact_person %}
+                            {% for em in assignment.upstream_contact_person.extra_emails.all %}
+                            <div>{{ em.email }}{% if em.description %} <small class="text-muted">({{ em.description }})</small>{% endif %}</div>
+                            {% empty %}
+                            -
+                            {% endfor %}
+                            {% else %}-{% endif %}
+                        </dd>
+                        <dt class="col-sm-4">電話</dt>
+                        <dd class="col-sm-8">{{ assignment.upstream_contact_person.phone|default:"-" }}</dd>
+                        <dt class="col-sm-4">LINE</dt>
+                        <dd class="col-sm-8">
+                            {% if assignment.upstream_contact_person and assignment.upstream_contact_person.line_available %}
+                            <span class="badge bg-success">可</span>
+                            {% else %}
+                            <span class="badge bg-secondary">-</span>
+                            {% endif %}
+                        </dd>
+                    </dl>
+                </div>
+            </div>
+        </div>
+
+        <!-- 下位（発注先） -->
+        <div class="col-md-6 mb-4">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header" style="background-color: #8b7a6b; color: white;">下位（発注先）</div>
+                <div class="card-body">
+                    <dl class="row mb-0">
+                        <dt class="col-sm-4">会社名</dt>
+                        <dd class="col-sm-8">
+                            {{ assignment.downstream_entity.name|default:"-" }}
+                            {% if assignment.downstream_entity.has_invoice_registration %}
+                            <span class="badge bg-success ms-1">インボイス番号あり</span>
+                            {% else %}
+                            <span class="badge bg-warning text-dark ms-1">インボイス番号なし</span>
+                            {% endif %}
+                        </dd>
+                        <dt class="col-sm-4">会社電話</dt>
+                        <dd class="col-sm-8">{{ assignment.downstream_entity.company_phone|default:"-" }}</dd>
+                        <dt class="col-sm-4">住所</dt>
+                        <dd class="col-sm-8">{{ assignment.downstream_entity.address|default:"-" }}</dd>
+                        <dt class="col-sm-4">送付先</dt>
+                        <dd class="col-sm-8">{{ assignment.downstream_entity.mailing_address|default:"-" }}</dd>
+                    </dl>
+                    <hr>
+                    <dl class="row mb-0">
+                        <dt class="col-sm-4">担当者</dt>
+                        <dd class="col-sm-8">{{ assignment.downstream_contact_person.name|default:"-" }}</dd>
+                        <dt class="col-sm-4">メール</dt>
+                        <dd class="col-sm-8">
+                            {% if assignment.downstream_contact_person %}
+                            {% for em in assignment.downstream_contact_person.extra_emails.all %}
+                            <div>{{ em.email }}{% if em.description %} <small class="text-muted">({{ em.description }})</small>{% endif %}</div>
+                            {% empty %}
+                            -
+                            {% endfor %}
+                            {% else %}-{% endif %}
+                        </dd>
+                        <dt class="col-sm-4">電話</dt>
+                        <dd class="col-sm-8">{{ assignment.downstream_contact_person.phone|default:"-" }}</dd>
+                        <dt class="col-sm-4">LINE</dt>
+                        <dd class="col-sm-8">
+                            {% if assignment.downstream_contact_person and assignment.downstream_contact_person.line_available %}
+                            <span class="badge bg-success">可</span>
+                            {% else %}
+                            <span class="badge bg-secondary">-</span>
+                            {% endif %}
+                        </dd>
+                    </dl>
+                </div>
+            </div>
+        </div>
+
+        <!-- 備考 -->
+        {% if assignment.notes %}
+        <div class="col-12 mb-4">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-light">備考</div>
+                <div class="card-body">
+                    <p class="mb-0" style="white-space: pre-wrap;">{{ assignment.notes }}</p>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

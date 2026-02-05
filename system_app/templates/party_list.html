@@ -1,116 +1,85 @@
-{% extends "base.html" %} {% load humanize %} {% block content %}
+{% extends "base.html" %}
+{% load humanize %}
+
+{% block content %}
 <div class="container mt-4">
-  <div class="d-flex justify-content-between align-items-center mb-3">
-    <h2>人材一覧</h2>
-    <div class="d-flex gap-2">
-      <a href="{% url 'freelancer_create' %}" class="btn btn-primary"
-        >個人 新規</a
-      >
-      <a href="{% url 'partner_add' %}" class="btn btn-dark">BP 新規</a>
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="mb-0">案件・契約管理</h2>
+        <a href="{% url 'contact_entity_create' %}" class="btn btn-success">+ 新規アサインメント登録</a>
     </div>
-  </div>
 
-  {# フィルタ（形態） #}
-  <div class="mb-3">
-    <div class="btn-group" role="group" aria-label="type filter">
-      <a
-        class="btn btn-outline-secondary {% if filter_type == 'all' %}active{% endif %}"
-        href="{% url 'party_list' %}?type=all"
-        >全て</a
-      >
-      <a
-        class="btn btn-outline-secondary {% if filter_type == 'freelancer' %}active{% endif %}"
-        href="{% url 'party_list' %}?type=freelancer"
-        >個人事業主</a
-      >
-      <a
-        class="btn btn-outline-secondary {% if filter_type == 'partner' %}active{% endif %}"
-        href="{% url 'party_list' %}?type=partner"
-        >BP</a
-      >
-    </div>
-  </div>
+    <!-- 検索・フィルタ -->
+    <form method="get" class="row g-3 mb-4">
+        <div class="col-md-3">
+            <input type="text" name="search" class="form-control" placeholder="名前で検索" value="{{ search_name }}">
+        </div>
+        <div class="col-md-2">
+            <select name="worker_type" class="form-select">
+                <option value="">-- 種別 --</option>
+                {% for wt in worker_types %}
+                <option value="{{ wt }}" {% if filter_type == wt %}selected{% endif %}>{{ wt }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-3">
+            <div class="form-check mt-2">
+                <input type="checkbox" name="show_inactive" value="1" class="form-check-input" id="showInactive" {% if show_inactive %}checked{% endif %}>
+                <label class="form-check-label" for="showInactive">終了した案件も表示</label>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <button type="submit" class="btn btn-primary w-100">検索</button>
+        </div>
+        <div class="col-md-2">
+            <a href="{% url 'party_list' %}" class="btn btn-outline-secondary w-100">クリア</a>
+        </div>
+    </form>
 
-  <div class="card shadow-sm">
-    <div class="table-responsive">
-      <table class="table table-hover align-middle mb-0">
-        <thead class="table-light">
-          <tr>
-            <th>形態</th>
-            <th>名称</th>
-            <th>補足</th>
-            <th>単価 (月額)</th>
-            <th>精算幅 (h)</th>
-            <th>状態</th>
-            <th>日付</th>
-            <th class="text-center"></th>
-            {# 詳細ボタン専用。列名なし #}
-            <th class="text-center">操作</th>
-          </tr>
+    <table class="table table-striped table-hover">
+        <thead class="table-dark">
+            <tr>
+                <th>氏名</th>
+                <th>種別</th>
+                <th>営業担当</th>
+                <th>案件名</th>
+                <th>現行単価</th>
+                <th>稼働状況</th>
+                <th>発注期間終了</th>
+                <th></th>
+            </tr>
         </thead>
         <tbody>
-          {% for r in rows %}
-          <tr>
-            <td>
-              {% if r.kind_key == "freelancer" %}
-              <span class="badge bg-primary">個人</span>
-              {% else %}
-              <span class="badge bg-dark">BP</span>
-              {% endif %}
-            </td>
-
-            <td class="fw-bold">{{ r.name }}</td>
-
-            <td><small class="text-muted">{{ r.sub }}</small></td>
-
-            <td>{{ r.base_unit_price|intcomma }} 円</td>
-
-            <td>
-              <span class="badge bg-secondary">
-                {{ r.lower }}h 〜 {{ r.upper }}h
-              </span>
-            </td>
-
-            <td>
-              {% if r.status == "稼働中" %}
-              <span class="badge bg-success">稼働中</span>
-              {% elif r.status == "停止中" %}
-              <span class="badge bg-secondary">停止中</span>
-              {% elif r.status == "契約あり" %}
-              <span class="badge bg-info text-dark">契約あり</span>
-              {% else %}
-              <span class="text-muted">-</span>
-              {% endif %}
-            </td>
-
-            <td>
-              <small class="text-muted">{{ r.date_label }}</small><br />
-              {{ r.date_value|date:"Y-m-d" }}
-            </td>
-
-            <td class="text-center">
-              <a
-                href="{{ r.detail_url }}"
-                class="btn btn-sm btn-outline-secondary"
-                >詳細</a
-              >
-            </td>
-            <td class="text-center">
-              <a href="{{ r.edit_url }}" class="btn btn-sm btn-outline-primary"
-                >編集</a
-              >
-            </td>
-          </tr>
-          {% empty %}
-          <tr>
-            <td colspan="9" class="text-center py-4 text-muted">
-              データがありません。
-            </td>
-          </tr>
-          {% endfor %}
+            {% for row in rows %}
+            <tr>
+                <td>{{ row.name }}</td>
+                <td>{{ row.worker_type|default:"-" }}</td>
+                <td>{{ row.sales_owner|default:"-" }}</td>
+                <td>{{ row.project_name }}</td>
+                <td>
+                    {% if row.unit_price %}
+                    {{ row.unit_price|intcomma }}円
+                    {% else %}
+                    -
+                    {% endif %}
+                </td>
+                <td>
+                    {% if row.is_active %}
+                    <span class="badge bg-success">稼働中</span>
+                    {% else %}
+                    <span class="badge bg-secondary">停止</span>
+                    {% endif %}
+                </td>
+                <td>{{ row.order_period_end_ym|default:"-" }}</td>
+                <td>
+                    <a href="{% url 'assignment_detail' row.id %}" class="btn btn-sm btn-outline-primary">詳細</a>
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="8" class="text-center text-muted">データがありません</td>
+            </tr>
+            {% endfor %}
         </tbody>
-      </table>
-    </div>
-  </div>
+    </table>
 </div>
 {% endblock %}
