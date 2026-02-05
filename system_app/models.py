@@ -43,6 +43,11 @@ class ContactEntity(models.Model):
     email = models.EmailField(blank=True, null=True)
     phone = models.CharField(max_length=50, blank=True, null=True)
     worker_type = models.CharField(max_length=50, blank=True, null=True)  # PERSON only
+    # COMPANY用
+    address = models.TextField(blank=True, null=True, verbose_name="会社住所")
+    mailing_address = models.TextField(blank=True, null=True, verbose_name="送付先住所")
+    company_phone = models.CharField(max_length=50, blank=True, null=True, verbose_name="会社電話番号")
+    has_invoice_registration = models.BooleanField(default=False, verbose_name="インボイス登録済み")
 
     def __str__(self):
         return f"{self.name} ({self.kind})"
@@ -58,9 +63,24 @@ class EntityContactPerson(models.Model):
     name = models.CharField(max_length=255)
     email = models.EmailField(blank=True, null=True)
     phone = models.CharField(max_length=50, blank=True, null=True)
+    line_available = models.BooleanField(default=False, verbose_name="LINE連絡可")
 
     def __str__(self):
         return f"{self.name}"
+
+
+class ContactEmail(models.Model):
+    """担当者の追加メールアドレス"""
+    contact_person = models.ForeignKey(
+        EntityContactPerson,
+        on_delete=models.CASCADE,
+        related_name="extra_emails",
+    )
+    email = models.EmailField()
+    description = models.CharField(max_length=100, blank=True, verbose_name="説明")
+
+    def __str__(self):
+        return f"{self.email} ({self.description})"
 
 
 class Assignment(models.Model):
@@ -76,7 +96,6 @@ class Assignment(models.Model):
         related_name="assignments_as_sales_owner",
     )
 
-    timesheet_collection_method = models.CharField(max_length=100, blank=True, null=True)
     notes = models.TextField(blank=True, null=True)
     project_name = models.CharField(max_length=255, blank=True, null=True)
 
@@ -108,6 +127,7 @@ class Assignment(models.Model):
 
     order_period_start_ym = models.DateField(blank=True, null=True)
     order_period_end_ym = models.DateField(blank=True, null=True)
+    is_active = models.BooleanField(default=True, verbose_name="稼働中")
 
     def __str__(self):
         return f"Assignment {self.id}"
@@ -115,6 +135,11 @@ class Assignment(models.Model):
 
 class ServiceContract(models.Model):
     """契約条件"""
+    TIMESHEET_SOURCE_CHOICES = [
+        ('UPSTREAM', '上位から'),
+        ('DOWNSTREAM', '下位から'),
+    ]
+
     assignment = models.ForeignKey(
         Assignment,
         on_delete=models.CASCADE,
@@ -125,10 +150,40 @@ class ServiceContract(models.Model):
     valid_to = models.DateField(blank=True, null=True)  # NULL = current
 
     unit_price = models.IntegerField()
+    is_fixed_fee = models.BooleanField(default=False, verbose_name="固定報酬")
+    travel_expense_included = models.BooleanField(default=False, verbose_name="交通費込み")
+    # 勤務表回収（上位/下位）
+    upstream_timesheet_collection_method = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        verbose_name="上位 勤務表回収手段"
+    )
+    downstream_timesheet_collection_method = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        verbose_name="下位 勤務表回収手段"
+    )
     lower_limit_hour = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
     upper_limit_hours = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
     deduction_unit_price = models.IntegerField(blank=True, null=True)
     excess_unit_price = models.IntegerField(blank=True, null=True)
+    settlement_unit_minutes = models.IntegerField(blank=True, null=True, verbose_name="精算時間単位（分）")
+    upstream_payment_terms = models.IntegerField(blank=True, null=True, verbose_name="上位支払いサイト（日）")
+    downstream_payment_terms = models.IntegerField(blank=True, null=True, verbose_name="下位支払いサイト（日）")
+    bank_holiday_handling = models.CharField(max_length=100, blank=True, null=True, verbose_name="金融機関休業日の場合")
+    downstream_bank_holiday_handling = models.CharField(max_length=100, blank=True, null=True, verbose_name="下位 金融機関休業日の場合")
+    timesheet_due_date = models.DateField(blank=True, null=True, verbose_name="勤務表締め日")
+
+    # 下位（発注先）契約条件
+    downstream_unit_price = models.IntegerField(blank=True, null=True, verbose_name="下位単価")
+    downstream_is_fixed_fee = models.BooleanField(default=False, verbose_name="下位固定報酬")
+    downstream_lower_limit_hour = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True, verbose_name="下位精算下限時間")
+    downstream_upper_limit_hours = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True, verbose_name="下位精算上限時間")
+    downstream_deduction_unit_price = models.IntegerField(blank=True, null=True, verbose_name="下位控除単価")
+    downstream_excess_unit_price = models.IntegerField(blank=True, null=True, verbose_name="下位超過単価")
+    downstream_settlement_unit_minutes = models.IntegerField(blank=True, null=True, verbose_name="下位精算時間単位（分）")
 
     def __str__(self):
         return f"ServiceContract {self.id}"
@@ -165,20 +220,16 @@ class TaskStatus(models.Model):
         MonthlyProcess,
         on_delete=models.CASCADE,
         related_name="task_statuses",
-        null=True,
-        blank=True,
     )
     assignment = models.ForeignKey(
         Assignment,
         on_delete=models.CASCADE,
         related_name="task_statuses",
-        null=True,
-        blank=True,
     )
 
-    timesheet_status = models.CharField(max_length=30, blank=True, default="")
-    invoice_status = models.CharField(max_length=30, blank=True, default="")
-    purchase_order_status = models.CharField(max_length=30, blank=True, default="")
+    timesheet_status = models.CharField(max_length=30)
+    invoice_status = models.CharField(max_length=30)
+    purchase_order_status = models.CharField(max_length=30)
     actual_hours = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
 
     def __str__(self):

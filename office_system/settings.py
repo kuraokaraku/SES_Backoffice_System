@@ -50,6 +50,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'system_app',
     'django.contrib.humanize',
+    # "django_extensions",  # dev only, not in requirements.txt
 ]
 
 MIDDLEWARE = [
@@ -121,6 +122,9 @@ LANGUAGE_CODE = 'en-us'
 TIME_ZONE = 'UTC'
 
 USE_I18N = True
+
+USE_THOUSAND_SEPARATOR = True
+NUMBER_GROUPING = 3
 
 USE_TZ = True
 

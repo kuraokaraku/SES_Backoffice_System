@@ -45,15 +45,11 @@
                         <label class="form-label">案件名</label>
                         {{ form.project_name }}
                     </div>
-                    <div class="col-md-4 mb-3">
-                        <label class="form-label">勤怠表収集方法</label>
-                        {{ form.timesheet_collection_method }}
-                    </div>
-                    <div class="col-md-4 mb-3">
+                    <div class="col-md-6 mb-3">
                         <label class="form-label">発注期間開始</label>
                         {{ form.order_period_start_ym }}
                     </div>
-                    <div class="col-md-4 mb-3">
+                    <div class="col-md-6 mb-3">
                         <label class="form-label">発注期間終了</label>
                         {{ form.order_period_end_ym }}
                     </div>
@@ -61,13 +57,19 @@
                         <label class="form-label">備考</label>
                         {{ form.notes }}
                     </div>
+                    <div class="col-md-6 mb-3">
+                        <div class="form-check mt-2">
+                            {{ form.is_active }}
+                            <label class="form-check-label" for="id_is_active">稼働中</label>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
 
-        <!-- 契約情報 -->
+        <!-- 上位契約情報 -->
         <div class="card mb-4 border-0 shadow-sm">
-            <div class="card-header" style="background-color: #c9a45c; color: white;">契約情報</div>
+            <div class="card-header" style="background-color: #c9a45c; color: white;">上位契約情報</div>
             <div class="card-body">
                 <div class="row">
                     <div class="col-md-4 mb-3">
@@ -82,71 +84,212 @@
                         <label class="form-label">契約終了日</label>
                         {{ form.valid_to }}
                     </div>
-                    <div class="col-md-3 mb-3">
-                        <label class="form-label">精算下限時間</label>
-                        {{ form.lower_limit_hour }}
+                    <div class="col-md-6 mb-3">
+                        <div class="form-check">
+                            {{ form.is_fixed_fee }}
+                            <label class="form-check-label" for="id_is_fixed_fee">固定報酬（精算なし）</label>
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <div class="form-check">
+                            {{ form.travel_expense_included }}
+                            <label class="form-check-label" for="id_travel_expense_included">交通費込み</label>
+                        </div>
+                    </div>
+                    <!-- 精算関連（固定報酬時は非表示） -->
+                    <div id="settlement-fields">
+                        <div class="row">
+                            <div class="col-md-3 mb-3">
+                                <label class="form-label">精算下限時間</label>
+                                {{ form.lower_limit_hour }}
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <label class="form-label">精算上限時間</label>
+                                {{ form.upper_limit_hours }}
+                            </div>
+                            <div class="col-md-2 mb-3">
+                                <label class="form-label">控除単価（円）</label>
+                                {{ form.deduction_unit_price }}
+                            </div>
+                            <div class="col-md-2 mb-3">
+                                <label class="form-label">超過単価（円）</label>
+                                {{ form.excess_unit_price }}
+                            </div>
+                            <div class="col-md-2 mb-3">
+                                <label class="form-label">精算単位（分）</label>
+                                {{ form.settlement_unit_minutes }}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">勤務表回収手段</label>
+                        {{ form.upstream_timesheet_collection_method }}
                     </div>
                     <div class="col-md-3 mb-3">
-                        <label class="form-label">精算上限時間</label>
-                        {{ form.upper_limit_hours }}
+                        <label class="form-label">上位 支払いサイト（日）</label>
+                        {{ form.upstream_payment_terms }}
                     </div>
                     <div class="col-md-3 mb-3">
-                        <label class="form-label">控除単価（円）</label>
-                        {{ form.deduction_unit_price }}
+                        <label class="form-label">金融機関休業日の場合</label>
+                        {{ form.bank_holiday_handling }}
                     </div>
                     <div class="col-md-3 mb-3">
-                        <label class="form-label">超過単価（円）</label>
-                        {{ form.excess_unit_price }}
+                        <label class="form-label">勤務表締め日</label>
+                        {{ form.timesheet_due_date }}
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- 上流（発注元） -->
+        <!-- 下位契約情報 -->
         <div class="card mb-4 border-0 shadow-sm">
-            <div class="card-header" style="background-color: #7a8b99; color: white;">上流（発注元）</div>
+            <div class="card-header" style="background-color: #d4816b; color: white;">下位契約情報</div>
             <div class="card-body">
                 <div class="row">
-                    <div class="col-md-6 mb-3">
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">下位単価（円）</label>
+                        {{ form.downstream_unit_price }}
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <div class="form-check mt-4">
+                            {{ form.downstream_is_fixed_fee }}
+                            <label class="form-check-label" for="id_downstream_is_fixed_fee">固定報酬（精算なし）</label>
+                        </div>
+                    </div>
+                    <div class="col-md-4 mb-3"></div>
+                    <!-- 下位精算関連（下位固定報酬時は非表示） -->
+                    <div id="downstream-settlement-fields">
+                        <div class="row">
+                            <div class="col-md-3 mb-3">
+                                <label class="form-label">勤務表回収手段</label>
+                                {{ form.downstream_timesheet_collection_method }}
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <label class="form-label">支払サイト（日）</label>
+                                {{ form.downstream_payment_terms }}
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <label class="form-label">金融機関休業日の場合</label>
+                                {{ form.downstream_bank_holiday_handling }}
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <label class="form-label">精算下限時間</label>
+                                {{ form.downstream_lower_limit_hour }}
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <label class="form-label">精算上限時間</label>
+                                {{ form.downstream_upper_limit_hours }}
+                            </div>
+                            <div class="col-md-2 mb-3">
+                                <label class="form-label">控除単価（円）</label>
+                                {{ form.downstream_deduction_unit_price }}
+                            </div>
+                            <div class="col-md-2 mb-3">
+                                <label class="form-label">超過単価（円）</label>
+                                {{ form.downstream_excess_unit_price }}
+                            </div>
+                            <div class="col-md-2 mb-3">
+                                <label class="form-label">精算単位（分）</label>
+                                {{ form.downstream_settlement_unit_minutes }}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 上位（発注元） -->
+        <div class="card mb-4 border-0 shadow-sm">
+            <div class="card-header" style="background-color: #7a8b99; color: white;">上位（発注元）</div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-4 mb-3">
                         <label class="form-label">会社名</label>
                         {{ form.upstream_company_name }}
                     </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">会社電話番号</label>
+                        {{ form.upstream_company_phone }}
+                    </div>
+                    <div class="col-md-4 mb-3"></div>
                     <div class="col-md-6 mb-3">
+                        <label class="form-label">会社住所</label>
+                        {{ form.upstream_address }}
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">送付先住所</label>
+                        {{ form.upstream_mailing_address }}
+                    </div>
+                    <hr>
+                    <div class="col-md-4 mb-3">
                         <label class="form-label">担当者名</label>
                         {{ form.upstream_contact_name }}
                     </div>
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label">担当者メール</label>
-                        {{ form.upstream_contact_email }}
-                    </div>
-                    <div class="col-md-6 mb-3">
+                    <div class="col-md-4 mb-3">
                         <label class="form-label">担当者電話</label>
                         {{ form.upstream_contact_phone }}
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <div class="form-check mt-4">
+                            {{ form.upstream_line_available }}
+                            <label class="form-check-label" for="id_upstream_line_available">LINE連絡可</label>
+                        </div>
+                    </div>
+                    <div class="col-12 mb-2">
+                        <label class="form-label">担当者メール</label>
+                        <div id="upstream-emails"></div>
+                        <button type="button" class="btn btn-sm btn-outline-primary mt-1" onclick="addEmailRow('upstream')">+ メール追加</button>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- 下流（発注先） -->
+        <!-- 下位（発注先） -->
         <div class="card mb-4 border-0 shadow-sm">
-            <div class="card-header" style="background-color: #8b7a6b; color: white;">下流（発注先）</div>
+            <div class="card-header" style="background-color: #8b7a6b; color: white;">下位（発注先）</div>
             <div class="card-body">
                 <div class="row">
-                    <div class="col-md-6 mb-3">
+                    <div class="col-md-4 mb-3">
                         <label class="form-label">会社名</label>
                         {{ form.downstream_company_name }}
                     </div>
+                    <div class="col-md-4 mb-3">
+                        <label class="form-label">会社電話番号</label>
+                        {{ form.downstream_company_phone }}
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <div class="form-check mt-4">
+                            {{ form.downstream_has_invoice_registration }}
+                            <label class="form-check-label" for="id_downstream_has_invoice_registration">インボイス登録済み</label>
+                        </div>
+                    </div>
                     <div class="col-md-6 mb-3">
+                        <label class="form-label">会社住所</label>
+                        {{ form.downstream_address }}
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">送付先住所</label>
+                        {{ form.downstream_mailing_address }}
+                    </div>
+                    <hr>
+                    <div class="col-md-4 mb-3">
                         <label class="form-label">担当者名</label>
                         {{ form.downstream_contact_name }}
                     </div>
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label">担当者メール</label>
-                        {{ form.downstream_contact_email }}
-                    </div>
-                    <div class="col-md-6 mb-3">
+                    <div class="col-md-4 mb-3">
                         <label class="form-label">担当者電話</label>
                         {{ form.downstream_contact_phone }}
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <div class="form-check mt-4">
+                            {{ form.downstream_line_available }}
+                            <label class="form-check-label" for="id_downstream_line_available">LINE連絡可</label>
+                        </div>
+                    </div>
+                    <div class="col-12 mb-2">
+                        <label class="form-label">担当者メール</label>
+                        <div id="downstream-emails"></div>
+                        <button type="button" class="btn btn-sm btn-outline-primary mt-1" onclick="addEmailRow('downstream')">+ メール追加</button>
                     </div>
                 </div>
             </div>
@@ -158,4 +301,63 @@
         </div>
     </form>
 </div>
+
+<script>
+function addEmailRow(prefix, email, desc) {
+    const container = document.getElementById(prefix + '-emails');
+    const row = document.createElement('div');
+    row.className = 'row mb-2 align-items-center';
+    row.innerHTML = `
+        <div class="col-md-6">
+            <input type="email" name="${prefix}_emails[]" class="form-control" placeholder="email@example.com" value="${email || ''}">
+        </div>
+        <div class="col-md-4">
+            <input type="text" name="${prefix}_email_descs[]" class="form-control" placeholder="説明（業務用、個人等）" value="${desc || ''}">
+        </div>
+        <div class="col-md-2">
+            <button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest('.row').remove()">削除</button>
+        </div>
+    `;
+    container.appendChild(row);
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    // 固定報酬トグル
+    const fixedFeeCheckbox = document.getElementById('id_is_fixed_fee');
+    const settlementFields = document.getElementById('settlement-fields');
+    function toggleSettlementFields() {
+        settlementFields.style.display = fixedFeeCheckbox.checked ? 'none' : 'block';
+    }
+    toggleSettlementFields();
+    fixedFeeCheckbox.addEventListener('change', toggleSettlementFields);
+
+    // 下位固定報酬トグル
+    const dsFixedFeeCheckbox = document.getElementById('id_downstream_is_fixed_fee');
+    const dsSettlementFields = document.getElementById('downstream-settlement-fields');
+    function toggleDsSettlementFields() {
+        dsSettlementFields.style.display = dsFixedFeeCheckbox.checked ? 'none' : 'block';
+    }
+    toggleDsSettlementFields();
+    dsFixedFeeCheckbox.addEventListener('change', toggleDsSettlementFields);
+
+    // 既存メールデータを展開
+    {% if assignment.upstream_contact_person %}
+    {% for em in assignment.upstream_contact_person.extra_emails.all %}
+    addEmailRow('upstream', '{{ em.email|escapejs }}', '{{ em.description|escapejs }}');
+    {% endfor %}
+    {% endif %}
+    if (document.getElementById('upstream-emails').children.length === 0) {
+        addEmailRow('upstream');
+    }
+
+    {% if assignment.downstream_contact_person %}
+    {% for em in assignment.downstream_contact_person.extra_emails.all %}
+    addEmailRow('downstream', '{{ em.email|escapejs }}', '{{ em.description|escapejs }}');
+    {% endfor %}
+    {% endif %}
+    if (document.getElementById('downstream-emails').children.length === 0) {
+        addEmailRow('downstream');
+    }
+});
+</script>
 {% endblock %}
