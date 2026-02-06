@@ -141,6 +141,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # ログイン後のリダイレクト先も一番下に追記しておきましょう
 LOGIN_REDIRECT_URL = 'menu'
+LOGIN_URL = '/login/'
 
 # ログアウトした後に遷移するURL
 LOGOUT_REDIRECT_URL = 'login'  # ログイン画面のURLパターン名
