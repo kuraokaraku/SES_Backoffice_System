@@ -134,7 +134,7 @@
                         {{ form.bank_holiday_handling }}
                     </div>
                     <div class="col-md-3 mb-3">
-                        <label class="form-label">勤務表締め日</label>
+                        <label class="form-label">勤務表締め日（旧）</label>
                         {{ form.timesheet_due_date }}
                     </div>
                 </div>
@@ -171,6 +171,10 @@
                             <div class="col-md-3 mb-3">
                                 <label class="form-label">金融機関休業日の場合</label>
                                 {{ form.downstream_bank_holiday_handling }}
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <label class="form-label">勤務表締め日（翌月N日）</label>
+                                {{ form.downstream_timesheet_due_day }}
                             </div>
                             <div class="col-md-3 mb-3">
                                 <label class="form-label">精算下限時間</label>

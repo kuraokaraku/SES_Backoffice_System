@@ -222,8 +222,12 @@ class ContactEntityForm(forms.Form):
         widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': '翌営業日払い'})
     )
     timesheet_due_date = forms.DateField(
-        label='勤務表締め日', required=False,
+        label='勤務表締め日（旧）', required=False,
         widget=forms.DateInput(attrs={'class': 'form-control', 'type': 'date'})
+    )
+    downstream_timesheet_due_day = forms.IntegerField(
+        label='下位 勤務表締め日（翌月N日）', required=False,
+        widget=forms.NumberInput(attrs={'class': 'form-control', 'placeholder': '3', 'min': '1', 'max': '28'})
     )
 
     # --- 下位契約条件 ---

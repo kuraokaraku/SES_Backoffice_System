@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from django.db import models
 import os
 
@@ -174,7 +176,10 @@ class ServiceContract(models.Model):
     downstream_payment_terms = models.IntegerField(blank=True, null=True, verbose_name="下位支払いサイト（日）")
     bank_holiday_handling = models.CharField(max_length=100, blank=True, null=True, verbose_name="金融機関休業日の場合")
     downstream_bank_holiday_handling = models.CharField(max_length=100, blank=True, null=True, verbose_name="下位 金融機関休業日の場合")
-    timesheet_due_date = models.DateField(blank=True, null=True, verbose_name="勤務表締め日")
+    timesheet_due_date = models.DateField(blank=True, null=True, verbose_name="勤務表締め日（旧）")
+    downstream_timesheet_due_day = models.PositiveSmallIntegerField(
+        blank=True, null=True, verbose_name="下位 勤務表締め日（翌月N日）"
+    )
 
     # 下位（発注先）契約条件
     downstream_unit_price = models.IntegerField(blank=True, null=True, verbose_name="下位単価")
@@ -234,6 +239,181 @@ class TaskStatus(models.Model):
 
     def __str__(self):
         return f"TaskStatus {self.id}"
+
+class Invoice(models.Model):
+    """請求書ヘッダ"""
+    STATUS_CHOICES = [
+        ('draft', '下書き'),
+        ('final', '確定'),
+        ('sent', '送付済'),
+        ('cancelled', '取消'),
+    ]
+
+    assignment = models.ForeignKey(
+        Assignment,
+        on_delete=models.CASCADE,
+        related_name="invoices",
+    )
+    billing_ym = models.CharField(max_length=6, verbose_name="請求対象年月")  # "YYYYMM"
+    status = models.CharField(
+        max_length=10,
+        choices=STATUS_CHOICES,
+        default='draft',
+        verbose_name="ステータス",
+    )
+    invoice_number = models.CharField(
+        max_length=50,
+        null=True,
+        blank=True,
+        unique=True,
+        verbose_name="請求書番号",
+    )
+    issue_date = models.DateField(null=True, blank=True, verbose_name="発行日")
+    due_date = models.DateField(null=True, blank=True, verbose_name="支払期日")
+    tax_rate = models.DecimalField(
+        max_digits=4,
+        decimal_places=2,
+        default=Decimal("0.10"),
+        verbose_name="税率",
+    )
+    subtotal_amount = models.DecimalField(
+        max_digits=12, decimal_places=0, default=0, verbose_name="小計"
+    )
+    tax_amount = models.DecimalField(
+        max_digits=12, decimal_places=0, default=0, verbose_name="消費税額"
+    )
+    total_amount = models.DecimalField(
+        max_digits=12, decimal_places=0, default=0, verbose_name="合計金額"
+    )
+    actual_hours = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True, verbose_name="実稼働時間"
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="作成日時")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新日時")
+
+    class Meta:
+        verbose_name = "請求書"
+        verbose_name_plural = "請求書一覧"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["assignment", "billing_ym"],
+                name="uniq_invoice_assignment_month",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["billing_ym", "status"]),
+        ]
+
+    def __str__(self):
+        return f"Invoice {self.invoice_number or 'DRAFT'} ({self.billing_ym})"
+
+
+class InvoiceLine(models.Model):
+    """請求書明細行"""
+    KIND_CHOICES = [
+        ('basic', '基本'),
+        ('excess', '超過'),
+        ('deduction', '控除'),
+        ('expense', '交通費等'),
+        ('adjustment', '調整'),
+    ]
+
+    invoice = models.ForeignKey(
+        Invoice,
+        on_delete=models.CASCADE,
+        related_name="lines",
+    )
+    kind = models.CharField(
+        max_length=20,
+        choices=KIND_CHOICES,
+        default='basic',
+        verbose_name="種別",
+    )
+    display_order = models.PositiveSmallIntegerField(default=0, verbose_name="並び順")
+    item_name = models.CharField(max_length=255, verbose_name="品名")
+    quantity = models.DecimalField(
+        max_digits=10, decimal_places=2, default=1, verbose_name="数量"
+    )
+    unit_price = models.DecimalField(
+        max_digits=12, decimal_places=0, default=0, verbose_name="単価"
+    )
+    amount = models.DecimalField(
+        max_digits=12, decimal_places=0, default=0, verbose_name="金額"
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="作成日時")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新日時")
+
+    class Meta:
+        verbose_name = "請求書明細行"
+        verbose_name_plural = "請求書明細行一覧"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["invoice", "display_order"],
+                name="uniq_invoice_line_order",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["invoice", "kind"]),
+        ]
+
+    def __str__(self):
+        return f"{self.item_name} ({self.get_kind_display()})"
+
+
+class Timesheet(models.Model):
+    """勤務表"""
+    STATUS_CHOICES = [
+        ('received', '受領済'),
+        ('processed', '請求書生成済'),
+    ]
+
+    assignment = models.ForeignKey(
+        Assignment,
+        on_delete=models.CASCADE,
+        related_name="timesheets",
+    )
+    billing_ym = models.CharField(max_length=6, verbose_name="対象年月")  # "YYYYMM"
+    status = models.CharField(
+        max_length=10,
+        choices=STATUS_CHOICES,
+        default='received',
+        verbose_name="ステータス",
+    )
+    file = models.FileField(upload_to='timesheets/%Y/%m/', verbose_name="勤務表ファイル")
+    original_filename = models.CharField(max_length=255, verbose_name="元ファイル名")
+    actual_hours = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True, verbose_name="実稼働時間"
+    )
+    travel_amount = models.DecimalField(
+        max_digits=12, decimal_places=0, null=True, blank=True, verbose_name="交通費"
+    )
+    parse_confidence = models.JSONField(null=True, blank=True, verbose_name="パース信頼度")
+    invoice = models.ForeignKey(
+        Invoice,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="timesheets",
+        verbose_name="請求書",
+    )
+    received_at = models.DateTimeField(auto_now_add=True, verbose_name="受領日時")
+    notes = models.TextField(blank=True, verbose_name="備考")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="作成日時")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新日時")
+
+    class Meta:
+        verbose_name = "勤務表"
+        verbose_name_plural = "勤務表一覧"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["assignment", "billing_ym"],
+                name="uniq_timesheet_assignment_month",
+            ),
+        ]
+
+    def __str__(self):
+        return f"Timesheet {self.assignment_id} ({self.billing_ym})"
+
 
 class PurchaseOrder(models.Model):
     client_name = models.CharField(max_length=255, verbose_name="クライアント名")

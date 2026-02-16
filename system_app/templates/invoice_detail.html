@@ -1,0 +1,343 @@
+{% extends "base.html" %}
+{% load l10n %}
+{% block title %}請求書詳細{% endblock %}
+{% block content %}
+
+<style>
+  .inv-table { border-collapse: collapse; width: 100%; max-width: 820px; margin: 0 auto; font-size: 14px; }
+  .inv-table td { padding: 4px 8px; vertical-align: middle; }
+  .inv-cell { border: none; background: transparent; width: 100%; text-align: inherit; font-size: 14px; padding: 2px 4px; }
+  .inv-cell:focus { outline: 2px solid #0d6efd; background: #fffde7; }
+  .inv-cell.text-end { text-align: right; }
+  .inv-bordered td { border: 1px solid #999; }
+  .inv-header-row td { background: #e9ecef; font-weight: bold; text-align: center; border: 1px solid #999; }
+  .inv-total-row td { background: #f8f9fa; border: 1px solid #999; }
+  .inv-grand-row td { background: #343a40; color: #fff; font-weight: bold; border: 1px solid #999; }
+  .inv-title { font-size: 22px; font-weight: bold; letter-spacing: 1em; text-align: center; padding: 16px 0 8px; }
+  .inv-right { text-align: right; }
+  .inv-amount { text-align: right; font-weight: bold; }
+  .inv-sep { height: 8px; }
+  .inv-doc { background: #fff; border: 1px solid #ccc; padding: 24px 32px; max-width: 880px; margin: 0 auto; box-shadow: 0 2px 8px rgba(0,0,0,.08); }
+  .ct-table { width: 100%; max-width: 820px; margin: 12px auto 0; font-size: 13px; border-collapse: collapse; }
+  .ct-table th, .ct-table td { border: 1px solid #bbb; padding: 4px 8px; }
+  .ct-table th { background: #f0f0f0; white-space: nowrap; }
+  .ct-cell { border: none; background: transparent; width: 100%; text-align: right; font-size: 13px; padding: 2px 4px; }
+  .ct-cell:focus { outline: 2px solid #0d6efd; background: #fffde7; }
+</style>
+
+<div class="container mt-4">
+  <nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="{% url 'menu' %}">メニュー</a></li>
+      <li class="breadcrumb-item"><a href="{% url 'invoice_list' %}">請求管理</a></li>
+      <li class="breadcrumb-item active">{{ invoice.billing_ym|slice:":4" }}年{{ invoice.billing_ym|slice:"4:" }}月</li>
+    </ol>
+  </nav>
+
+  {% if messages %}
+  {% for message in messages %}
+  <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+    {{ message }}
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+  </div>
+  {% endfor %}
+  {% endif %}
+
+  <form method="post">
+    {% csrf_token %}
+
+    <!-- ===== 請求書ドキュメント ===== -->
+    <div class="inv-doc mb-3">
+      <table class="inv-table">
+        <!-- タイトル -->
+        <tr><td colspan="7" class="inv-title">請　求　書</td></tr>
+
+        <!-- No. / 発行日 -->
+        <tr>
+          <td colspan="4"></td>
+          <td class="inv-right" style="white-space:nowrap">No.</td>
+          <td colspan="2">
+            <input type="text" name="header_invoice_number" value="{{ display_invoice_number|default:'' }}" class="inv-cell" placeholder="未採番">
+          </td>
+        </tr>
+
+        <!-- 登録番号 -->
+        <tr>
+          <td colspan="4"></td>
+          <td class="inv-right" style="font-size:12px">登録番号:</td>
+          <td colspan="2" style="font-size:12px">T3012401042154</td>
+        </tr>
+
+        <!-- 請求先 -->
+        <tr>
+          <td colspan="3">
+            <input type="text" name="header_client_name" value="{{ invoice.assignment.upstream_entity.name|default:'' }}" class="inv-cell" style="font-size:16px;font-weight:bold" disabled>
+          </td>
+          <td style="font-size:16px">御中</td>
+          <td colspan="3"></td>
+        </tr>
+
+        <!-- 発行日 -->
+        <tr>
+          <td colspan="4"></td>
+          <td class="inv-right">発行日</td>
+          <td colspan="2">
+            <input type="date" name="header_issue_date" value="{{ display_issue_date|date:'Y-m-d' }}" class="inv-cell">
+          </td>
+        </tr>
+
+        <!-- 発行者情報 -->
+        <tr>
+          <td colspan="4"></td>
+          <td colspan="3" class="inv-right" style="font-size:12px">株式会社ITFL</td>
+        </tr>
+        <tr>
+          <td colspan="4"></td>
+          <td colspan="3" class="inv-right" style="font-size:11px;color:#666">東京都府中市宮西町2-8-2 松原ビル / TEL: 03-6260-8797</td>
+        </tr>
+
+        <tr class="inv-sep"><td colspan="7"></td></tr>
+
+        <!-- お振込み期日 -->
+        <tr>
+          <td colspan="7" style="font-size:12px">＜お振込み期日＞</td>
+        </tr>
+        <tr>
+          <td colspan="2">
+            <input type="date" name="header_due_date" value="{{ display_due_date|date:'Y-m-d' }}" class="inv-cell">
+          </td>
+          <td colspan="5" style="font-size:13px">までにお振込み願います。</td>
+        </tr>
+
+        <!-- 実稼働時間 -->
+        <tr>
+          <td colspan="4"></td>
+          <td class="inv-right" style="font-size:13px">実稼働時間</td>
+          <td colspan="2" style="font-size:13px;font-weight:bold">
+            {% if display_actual_hours %}{{ display_actual_hours }} h{% else %}―{% endif %}
+          </td>
+        </tr>
+
+        <tr class="inv-sep"><td colspan="7"></td></tr>
+
+        <!-- 税込合計金額 -->
+        <tr style="border:2px solid #333;background:#f8f9fa">
+          <td colspan="2" style="font-weight:bold;padding:8px">税込合計金額</td>
+          <td class="inv-amount" style="font-size:18px;padding:8px" colspan="2" id="disp-header-total">￥ {{ invoice.total_amount|floatformat:0 }}</td>
+          <td style="padding:8px;font-size:12px">内消費税額</td>
+          <td class="inv-amount" style="padding:8px" colspan="2" id="disp-header-tax">￥ {{ invoice.tax_amount|floatformat:0 }}</td>
+        </tr>
+
+        <tr class="inv-sep"><td colspan="7"></td></tr>
+      </table>
+
+      <!-- 明細テーブル -->
+      <table class="inv-table inv-bordered">
+        <tr class="inv-header-row">
+          <td style="width:35%">品　名</td>
+          <td style="width:10%">数量</td>
+          <td style="width:15%">単　価</td>
+          <td style="width:20%">金　額</td>
+          <td style="width:20%">摘　要</td>
+        </tr>
+
+        {% for line in lines %}
+        {% if line.kind == 'basic' %}
+        <!-- 基本行 -->
+        <tr>
+          <td>
+            <input type="text" name="line_{{ line.id }}_item_name" value="{{ line.item_name }}" class="inv-cell">
+          </td>
+          <td>
+            <input type="number" name="line_{{ line.id }}_quantity" value="{{ line.quantity }}" step="0.01" class="inv-cell text-end">
+          </td>
+          <td>
+            <input type="text" inputmode="numeric" name="line_{{ line.id }}_unit_price" value="{{ line.unit_price|floatformat:0 }}" class="inv-cell text-end">
+          </td>
+          <td>
+            <input type="text" inputmode="numeric" name="line_{{ line.id }}_amount" data-line-amount value="{{ line.amount|floatformat:0 }}" class="inv-cell text-end">
+          </td>
+          <td style="font-size:12px;color:#666">基本</td>
+        </tr>
+        <tr>
+          <td style="font-size:12px;color:#666;padding-left:16px">{{ invoice.billing_ym|slice:"4:" }}月分</td>
+          <td colspan="4"></td>
+        </tr>
+
+        {% elif line.kind == 'excess' %}
+        <!-- 超過行 -->
+        <tr>
+          <td style="padding-left:16px">超過</td>
+          <td>
+            <input type="number" name="line_{{ line.id }}_quantity" value="{{ line.quantity }}" step="0.01" class="inv-cell text-end">
+          </td>
+          <td>
+            <input type="text" inputmode="numeric" name="line_{{ line.id }}_unit_price" value="{{ line.unit_price|floatformat:0 }}" class="inv-cell text-end">
+          </td>
+          <td>
+            <input type="text" inputmode="numeric" name="line_{{ line.id }}_amount" data-line-amount value="{{ line.amount|floatformat:0 }}" class="inv-cell text-end">
+          </td>
+          <td style="font-size:12px;color:#666">
+            <input type="hidden" name="line_{{ line.id }}_item_name" value="{{ line.item_name }}">
+            時間
+          </td>
+        </tr>
+
+        {% elif line.kind == 'deduction' %}
+        <!-- 控除行 -->
+        <tr>
+          <td style="padding-left:16px">控除</td>
+          <td>
+            <input type="number" name="line_{{ line.id }}_quantity" value="{{ line.quantity }}" step="0.01" class="inv-cell text-end">
+          </td>
+          <td>
+            <input type="text" inputmode="numeric" name="line_{{ line.id }}_unit_price" value="{{ line.unit_price|floatformat:0 }}" class="inv-cell text-end">
+          </td>
+          <td>
+            <input type="text" inputmode="numeric" name="line_{{ line.id }}_amount" data-line-amount value="{{ line.amount|floatformat:0 }}" class="inv-cell text-end">
+          </td>
+          <td style="font-size:12px;color:#666">
+            <input type="hidden" name="line_{{ line.id }}_item_name" value="{{ line.item_name }}">
+            時間
+          </td>
+        </tr>
+        {% endif %}
+        {% endfor %}
+
+        <!-- 小計 -->
+        <tr class="inv-total-row">
+          <td>小　計</td>
+          <td colspan="2"></td>
+          <td class="inv-amount" id="disp-subtotal">{{ invoice.subtotal_amount|floatformat:0 }}</td>
+          <td></td>
+        </tr>
+        <!-- 消費税 -->
+        <tr class="inv-total-row">
+          <td>消費税（10％）</td>
+          <td colspan="2"></td>
+          <td class="inv-amount" id="disp-tax">{{ invoice.tax_amount|floatformat:0 }}</td>
+          <td></td>
+        </tr>
+        <!-- 計 -->
+        <tr class="inv-total-row">
+          <td style="font-weight:bold">計</td>
+          <td colspan="2"></td>
+          <td class="inv-amount" id="disp-subtotal-tax">{{ subtotal_with_tax|floatformat:0 }}</td>
+          <td></td>
+        </tr>
+
+        <!-- 空行 -->
+        <tr><td colspan="5" style="height:8px;border-left:1px solid #999;border-right:1px solid #999"></td></tr>
+
+        <!-- 交通費（常に表示） -->
+        <tr>
+          <td>交通費・宿泊</td>
+          <td colspan="2"></td>
+          <td>
+            <input type="text" inputmode="numeric" name="expense_amount" value="{{ expense_amount|floatformat:0 }}" class="inv-cell text-end" id="inp-expense">
+          </td>
+          <td></td>
+        </tr>
+
+        <!-- 空行 -->
+        <tr><td colspan="5" style="height:8px;border-left:1px solid #999;border-right:1px solid #999"></td></tr>
+
+        <!-- 合計 -->
+        <tr class="inv-grand-row">
+          <td>合　計</td>
+          <td colspan="2"></td>
+          <td class="inv-amount" style="font-size:16px" id="disp-total">{{ invoice.total_amount|floatformat:0 }}</td>
+          <td></td>
+        </tr>
+      </table>
+
+      <!-- 振込先 -->
+      <div style="margin-top:16px;font-size:12px;color:#555;max-width:820px;margin-left:auto;margin-right:auto">
+        <p>お振り込みは下記銀行口座へお願い致します。</p>
+        <p style="padding-left:8px">多摩信用金庫　府中支店 (006)　普通　4397383　カ）アイティーエフエル</p>
+      </div>
+    </div>
+
+    <!-- 契約条件（折りたたみ） -->
+    {% if contract %}
+    <div style="max-width:880px;margin:0 auto">
+      <details class="mb-3">
+        <summary style="cursor:pointer;font-size:13px;color:#666;padding:4px 0">
+          <i class="bi bi-gear me-1"></i>契約条件を表示・編集
+        </summary>
+        {% localize off %}
+        <table class="ct-table mt-2">
+          <tr>
+            <th>単価</th>
+            <th>精算下限</th>
+            <th>精算上限</th>
+            <th>控除単価</th>
+            <th>超過単価</th>
+            <th>精算単位</th>
+            <th>支払サイト</th>
+            <th>実稼働時間</th>
+          </tr>
+          <tr>
+            <td><input type="number" name="ct_unit_price" value="{{ contract.unit_price|default:'' }}" class="ct-cell">円</td>
+            <td><input type="number" name="ct_lower_limit_hour" value="{{ contract.lower_limit_hour|default:'' }}" step="0.01" class="ct-cell">h</td>
+            <td><input type="number" name="ct_upper_limit_hours" value="{{ contract.upper_limit_hours|default:'' }}" step="0.01" class="ct-cell">h</td>
+            <td><input type="number" name="ct_deduction_unit_price" value="{{ contract.deduction_unit_price|default:'' }}" class="ct-cell">円/h</td>
+            <td><input type="number" name="ct_excess_unit_price" value="{{ contract.excess_unit_price|default:'' }}" class="ct-cell">円/h</td>
+            <td><input type="number" name="ct_settlement_unit_minutes" value="{{ contract.settlement_unit_minutes|default:'' }}" class="ct-cell">分</td>
+            <td><input type="number" name="ct_upstream_payment_terms" value="{{ contract.upstream_payment_terms|default:'' }}" class="ct-cell">日</td>
+            <td><input type="number" name="header_actual_hours" value="{{ display_actual_hours|default:'' }}" step="0.01" class="ct-cell">h</td>
+          </tr>
+        </table>
+        {% endlocalize %}
+        <div class="text-end mt-2">
+          <button type="submit" name="action" value="recalc" class="btn btn-warning btn-sm">
+            <i class="bi bi-arrow-clockwise me-1"></i>契約条件から再計算
+          </button>
+        </div>
+      </details>
+    </div>
+    {% endif %}
+
+    <!-- アクションボタン -->
+    <div class="d-flex justify-content-between mb-4" style="max-width:880px;margin:0 auto">
+      <a href="{% url 'invoice_list' %}" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left me-1"></i>一覧に戻る
+      </a>
+      <button type="submit" name="action" value="export" class="btn btn-success btn-lg">
+        <i class="bi bi-file-earmark-excel me-1"></i>Excelダウンロード
+      </button>
+    </div>
+  </form>
+</div>
+
+<script>
+(function(){
+  var fmt = function(n){ return n.toLocaleString('ja-JP'); };
+  var parse = function(v){ return parseInt((v+'').replace(/,/g,''),10) || 0; };
+
+  function recalc(){
+    var subtotal = 0;
+    document.querySelectorAll('[data-line-amount]').forEach(function(el){
+      subtotal += parse(el.value);
+    });
+    var expense = parse(document.getElementById('inp-expense').value);
+    var tax = Math.floor(subtotal * 0.1);
+    var subtotalTax = subtotal + tax;
+    var total = subtotalTax + expense;
+
+    document.getElementById('disp-subtotal').textContent = fmt(subtotal);
+    document.getElementById('disp-tax').textContent = fmt(tax);
+    document.getElementById('disp-subtotal-tax').textContent = fmt(subtotalTax);
+    document.getElementById('disp-total').textContent = fmt(total);
+    document.getElementById('disp-header-total').textContent = '￥ ' + fmt(total);
+    document.getElementById('disp-header-tax').textContent = '￥ ' + fmt(tax);
+  }
+
+  document.querySelectorAll('[data-line-amount]').forEach(function(el){
+    el.addEventListener('input', recalc);
+  });
+  document.getElementById('inp-expense').addEventListener('input', recalc);
+})();
+</script>
+
+{% endblock %}

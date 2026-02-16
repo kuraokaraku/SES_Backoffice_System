@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% load humanize %}
+
+{% block content %}
+<div class="container mt-4">
+    {% if messages %}
+    {% for message in messages %}
+    <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+        {{ message }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    {% endfor %}
+    {% endif %}
+
+    <!-- ヘッダ：月選択 + サマリー -->
+    <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+        <div class="d-flex align-items-center gap-3">
+            <a href="?ym={{ prev_ym }}" class="btn btn-outline-secondary btn-sm">&lt;</a>
+            <h2 class="mb-0">{{ year }}年{{ month }}月 勤務表回収</h2>
+            <a href="?ym={{ next_ym }}" class="btn btn-outline-secondary btn-sm">&gt;</a>
+        </div>
+        <div class="d-flex align-items-center gap-3">
+            <span class="text-muted">
+                未回収: <strong class="text-danger">{{ pending_count }}件</strong> / 全{{ total_count }}件
+            </span>
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="filterPending">
+                <label class="form-check-label" for="filterPending">未回収のみ表示</label>
+            </div>
+        </div>
+    </div>
+
+    <!-- テーブル -->
+    <div class="table-responsive">
+        <table class="table table-hover align-middle" id="timesheetTable">
+            <thead class="table-dark">
+                <tr>
+                    <th>ワーカー</th>
+                    <th>案件</th>
+                    <th>期限</th>
+                    <th>状態</th>
+                    <th>時間</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in rows %}
+                <tr class="{% if row.overdue and not row.timesheet %}table-danger{% endif %}"
+                    data-status="{% if row.timesheet %}{% if row.timesheet.status == 'processed' %}processed{% else %}received{% endif %}{% else %}pending{% endif %}">
+                    <td>{{ row.assignment.worker_entity.name }}</td>
+                    <td>{{ row.assignment.project_name|default:"-" }}</td>
+                    <td>
+                        {% if row.due_day %}
+                        {{ row.due_day }}日
+                        {% else %}
+                        -
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if not row.timesheet %}
+                        <span class="badge bg-danger">未提出</span>
+                        {% elif row.timesheet.status == 'received' %}
+                        <span class="badge bg-warning text-dark">受領済</span>
+                        {% elif row.timesheet.status == 'processed' %}
+                        <span class="badge bg-success">処理済</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if row.timesheet and row.timesheet.actual_hours %}
+                        {{ row.timesheet.actual_hours }}h
+                        {% else %}
+                        ---
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if not row.timesheet or row.timesheet.status == 'received' %}
+                        <!-- アップロードフォーム -->
+                        <form method="post" action="{% url 'timesheet_upload' %}" enctype="multipart/form-data" class="d-inline">
+                            {% csrf_token %}
+                            <input type="hidden" name="assignment_id" value="{{ row.assignment.id }}">
+                            <input type="hidden" name="billing_ym" value="{{ ym }}">
+                            <div class="input-group input-group-sm" style="max-width: 300px;">
+                                <input type="file" name="file" class="form-control form-control-sm" required accept=".xlsx,.xls,.pdf">
+                                <button type="submit" class="btn btn-outline-primary btn-sm">Upload</button>
+                            </div>
+                        </form>
+                        {% endif %}
+
+                        {% if row.timesheet and row.timesheet.status == 'received' %}
+                        <!-- 請求書作成ボタン -->
+                        <form method="post" action="{% url 'timesheet_generate_invoice' row.timesheet.pk %}" class="d-inline ms-1">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-success btn-sm">請求書作成</button>
+                        </form>
+                        {% endif %}
+
+                        {% if row.timesheet %}
+                        <a href="{% url 'timesheet_detail' row.timesheet.pk %}" class="btn btn-outline-secondary btn-sm ms-1">詳細</a>
+                        {% if row.timesheet.file %}<a href="{% url 'timesheet_download' row.timesheet.pk %}" class="btn btn-outline-info btn-sm ms-1">DL</a>{% endif %}
+                        {% endif %}
+
+                        {% if row.timesheet and row.timesheet.status == 'processed' and row.timesheet.invoice %}
+                        <a href="{% url 'invoice_detail' row.timesheet.invoice.id %}" class="btn btn-outline-primary btn-sm ms-1">請求書</a>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="6" class="text-center text-muted py-4">稼働中のアサインメントがありません</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const checkbox = document.getElementById('filterPending');
+    const rows = document.querySelectorAll('#timesheetTable tbody tr[data-status]');
+
+    checkbox.addEventListener('change', function() {
+        rows.forEach(function(row) {
+            if (checkbox.checked) {
+                row.style.display = row.dataset.status === 'pending' ? '' : 'none';
+            } else {
+                row.style.display = '';
+            }
+        });
+    });
+});
+</script>
+{% endblock %}

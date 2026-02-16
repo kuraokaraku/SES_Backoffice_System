@@ -102,7 +102,7 @@
                             <div>{{ current_contract.bank_holiday_handling|default:"-" }}</div>
                         </div>
                         <div class="col-md-3 mb-2">
-                            <small class="text-muted">勤務表締め日</small>
+                            <small class="text-muted">勤務表締め日（旧）</small>
                             <div>{{ current_contract.timesheet_due_date|default:"-" }}</div>
                         </div>
                     </div>
@@ -157,6 +157,10 @@
                         <div class="col-md-3 mb-2">
                             <small class="text-muted">金融機関休業日</small>
                             <div>{{ current_contract.downstream_bank_holiday_handling|default:"-" }}</div>
+                        </div>
+                        <div class="col-md-3 mb-2">
+                            <small class="text-muted">勤務表締め日</small>
+                            <div>{% if current_contract.downstream_timesheet_due_day %}翌月{{ current_contract.downstream_timesheet_due_day }}日{% else %}-{% endif %}</div>
                         </div>
                         {% endif %}
                     </div>

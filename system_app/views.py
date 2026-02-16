@@ -2,7 +2,7 @@
 import os
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
-from .models import MonthlyProcess, TaskStatus, Freelancer, PurchaseOrder, BusinessPartner, BusinessCard, Assignment, ServiceContract, ContactEntity, ContactEmail
+from .models import MonthlyProcess, TaskStatus, Freelancer, PurchaseOrder, BusinessPartner, BusinessCard, Assignment, ServiceContract, ContactEntity, ContactEmail, Invoice, InvoiceLine, Timesheet
 from .forms import FreelancerForm, TaskStatusForm, BusinessPartnerForm, ContactEntityForm
 from django.utils import timezone
 
@@ -264,6 +264,7 @@ def contact_entity_create(request):
                 bank_holiday_handling=data.get('bank_holiday_handling') or None,
                 downstream_bank_holiday_handling=data.get('downstream_bank_holiday_handling') or None,
                 timesheet_due_date=data.get('timesheet_due_date'),
+                downstream_timesheet_due_day=data.get('downstream_timesheet_due_day'),
                 # 下位契約条件
                 downstream_unit_price=data.get('downstream_unit_price'),
                 downstream_is_fixed_fee=ds_is_fixed_fee,
@@ -455,6 +456,7 @@ def assignment_edit(request, pk):
                 bank_holiday_handling=data.get('bank_holiday_handling') or None,
                 downstream_bank_holiday_handling=data.get('downstream_bank_holiday_handling') or None,
                 timesheet_due_date=data.get('timesheet_due_date'),
+                downstream_timesheet_due_day=data.get('downstream_timesheet_due_day'),
                 # 下位契約条件
                 downstream_unit_price=data.get('downstream_unit_price'),
                 downstream_is_fixed_fee=ds_is_fixed_fee,
@@ -506,6 +508,7 @@ def assignment_edit(request, pk):
                 'bank_holiday_handling': current_contract.bank_holiday_handling or '',
                 'downstream_bank_holiday_handling': current_contract.downstream_bank_holiday_handling or '',
                 'timesheet_due_date': current_contract.timesheet_due_date,
+                'downstream_timesheet_due_day': current_contract.downstream_timesheet_due_day,
                 # 下位契約条件
                 'downstream_unit_price': current_contract.downstream_unit_price,
                 'downstream_is_fixed_fee': current_contract.downstream_is_fixed_fee,
@@ -794,3 +797,578 @@ def partner_detail(request, pk=None):
 def business_card_list(request):
     cards = BusinessCard.objects.all().order_by('-created_at')
     return render(request, 'business_card_list.html', {'cards': cards})
+
+
+# --- 勤務表回収 ---
+@login_required
+def timesheet_dashboard(request):
+    from datetime import date
+    from django.db.models import Q
+
+    today = date.today()
+    # 月パラメータ（YYYYMM形式）
+    ym = request.GET.get('ym', '')
+    if not ym or len(ym) != 6:
+        ym = today.strftime('%Y%m')
+
+    year = int(ym[:4])
+    month = int(ym[4:6])
+
+    # 前月・翌月
+    if month == 1:
+        prev_ym = f"{year - 1}12"
+    else:
+        prev_ym = f"{year}{month - 1:02d}"
+    if month == 12:
+        next_ym = f"{year + 1}01"
+    else:
+        next_ym = f"{year}{month + 1:02d}"
+
+    # Active Assignments
+    assignments = Assignment.objects.filter(is_active=True).select_related(
+        'worker_entity', 'upstream_entity'
+    ).prefetch_related('contracts', 'timesheets')
+
+    # 該当月のTimesheetをprefetchで取得済み → Python側でマッチ
+    timesheets_qs = Timesheet.objects.filter(billing_ym=ym)
+    ts_map = {ts.assignment_id: ts for ts in timesheets_qs}
+
+    rows = []
+    pending_count = 0
+    total_count = 0
+    for a in assignments:
+        # 現行契約
+        contract = a.contracts.filter(
+            Q(valid_to__isnull=True) | Q(valid_to__gte=today)
+        ).filter(
+            Q(valid_from__isnull=True) | Q(valid_from__lte=today)
+        ).first()
+
+        due_day = contract.downstream_timesheet_due_day if contract else None
+        ts = ts_map.get(a.id)
+
+        # 期限超過判定
+        overdue = False
+        if due_day and not ts and month < 12:
+            due_month = month + 1
+            due_year = year
+            if due_month > 12:
+                due_month = 1
+                due_year += 1
+            try:
+                due_date = date(due_year, due_month, due_day)
+                overdue = today > due_date
+            except ValueError:
+                pass
+
+        total_count += 1
+        if not ts:
+            pending_count += 1
+
+        rows.append({
+            'assignment': a,
+            'contract': contract,
+            'timesheet': ts,
+            'due_day': due_day,
+            'overdue': overdue,
+        })
+
+    return render(request, 'timesheet_dashboard.html', {
+        'rows': rows,
+        'ym': ym,
+        'year': year,
+        'month': month,
+        'prev_ym': prev_ym,
+        'next_ym': next_ym,
+        'pending_count': pending_count,
+        'total_count': total_count,
+    })
+
+
+@login_required
+def timesheet_upload(request):
+    import os
+    import tempfile
+    from decimal import Decimal
+    from django.contrib import messages
+    from django.core.files.base import ContentFile
+
+    if request.method != 'POST':
+        return redirect('timesheet_dashboard')
+
+    assignment_id = request.POST.get('assignment_id')
+    ym = request.POST.get('billing_ym', '').strip()
+    uploaded = request.FILES.get('file')
+
+    if not assignment_id or not uploaded or not ym:
+        messages.error(request, '案件・ファイル・対象年月は必須です。')
+        return redirect('timesheet_dashboard')
+
+    assignment = get_object_or_404(Assignment, pk=int(assignment_id))
+
+    # ファイル内容を先に全部読む（パーサ・保存両方で使う）
+    file_bytes = uploaded.read()
+    suffix = os.path.splitext(uploaded.name)[1]
+
+    # 一時ファイルに書き出してパーサ実行
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+        tmp.write(file_bytes)
+        tmp_path = tmp.name
+
+    parsed = {}
+    try:
+        if suffix.lower() == '.pdf':
+            from system_app.services.timesheet_parsers.pdf_generic import parse_timesheet_pdf_generic
+            parsed = parse_timesheet_pdf_generic(tmp_path)
+        else:
+            from system_app.services.timesheet_parsers.xlsx_generic import parse_timesheet_xlsx_generic
+            parsed = parse_timesheet_xlsx_generic(tmp_path)
+    except Exception as e:
+        messages.warning(request, f'パースに失敗しました（ファイルは保存済み）: {e}')
+    finally:
+        os.unlink(tmp_path)
+
+    actual_hours = None
+    travel_amount = None
+    parse_confidence = {}
+
+    if parsed:
+        ah = parsed.get("actual_hours")
+        if ah and ah.get("value") is not None:
+            actual_hours = Decimal(str(ah["value"]))
+            parse_confidence["actual_hours"] = ah.get("confidence")
+        ta = parsed.get("travel_amount")
+        if ta and ta.get("value") is not None:
+            travel_amount = Decimal(str(ta["value"]))
+            parse_confidence["travel_amount"] = ta.get("confidence")
+
+    # ファイル名変換: {ym}_{worker_name}_{project_name}.{ext}
+    worker_name = assignment.worker_entity.name if assignment.worker_entity else "unknown"
+    project_name = assignment.project_name or "unknown"
+    new_filename = f"{ym}_{worker_name}_{project_name}{suffix}"
+
+    # Timesheet作成/更新
+    ts, _created = Timesheet.objects.update_or_create(
+        assignment=assignment,
+        billing_ym=ym,
+        defaults={
+            'status': 'received',
+            'original_filename': uploaded.name,
+            'actual_hours': actual_hours,
+            'travel_amount': travel_amount,
+            'parse_confidence': parse_confidence or None,
+            'invoice': None,
+        },
+    )
+
+    # ファイルを保存（既存があれば上書き）
+    if ts.file:
+        ts.file.delete(save=False)
+    ts.file.save(new_filename, ContentFile(file_bytes), save=True)
+
+    messages.success(request, f'勤務表を受領しました（{worker_name} / {ym}）')
+    return redirect(f"{reverse('timesheet_dashboard')}?ym={ym}")
+
+
+@login_required
+def timesheet_detail(request, pk):
+    from decimal import Decimal
+    from django.contrib import messages
+
+    ts = get_object_or_404(
+        Timesheet.objects.select_related('assignment', 'assignment__worker_entity', 'invoice'),
+        pk=pk,
+    )
+
+    if request.method == 'POST':
+        actual_hours_raw = request.POST.get('actual_hours', '').strip()
+        travel_amount_raw = request.POST.get('travel_amount', '').strip()
+        notes = request.POST.get('notes', '').strip()
+
+        if actual_hours_raw:
+            ts.actual_hours = Decimal(actual_hours_raw)
+        if travel_amount_raw:
+            ts.travel_amount = Decimal(travel_amount_raw)
+        ts.notes = notes
+        ts.save()
+        messages.success(request, '勤務表情報を更新しました。')
+        return redirect('timesheet_detail', pk=pk)
+
+    return render(request, 'timesheet_detail.html', {'ts': ts})
+
+
+@login_required
+def timesheet_download(request, pk):
+    ts = get_object_or_404(Timesheet, pk=pk)
+    if not ts.file:
+        raise Http404("ファイルが見つかりません")
+    return FileResponse(
+        open(ts.file.path, 'rb'),
+        as_attachment=True,
+        filename=ts.original_filename or os.path.basename(ts.file.name),
+    )
+
+
+@login_required
+def timesheet_generate_invoice(request, pk):
+    from decimal import Decimal
+    from django.contrib import messages
+    from system_app.services.invoicing import create_or_update_invoice_from_parsed
+
+    if request.method != 'POST':
+        return redirect('timesheet_dashboard')
+
+    ts = get_object_or_404(Timesheet, pk=pk)
+
+    if not ts.actual_hours:
+        messages.error(request, '実稼働時間が未入力のため請求書を生成できません。')
+        return redirect('timesheet_detail', pk=pk)
+
+    # パーサ結果の代わりに Timesheet のデータで parsed dict を構築
+    parsed = {
+        "billing_ym": {"value": ts.billing_ym, "confidence": 1.0},
+        "actual_hours": {"value": ts.actual_hours, "confidence": 1.0},
+    }
+    if ts.travel_amount:
+        parsed["travel_amount"] = {"value": ts.travel_amount, "confidence": 1.0}
+
+    try:
+        inv = create_or_update_invoice_from_parsed(
+            assignment_id=ts.assignment_id,
+            parsed=parsed,
+            fallback_travel_amount=Decimal("0"),
+        )
+        ts.invoice = inv
+        ts.status = 'processed'
+        ts.save()
+        messages.success(
+            request,
+            f'請求書ドラフトを作成しました（{inv.billing_ym} / 合計 {inv.total_amount:,.0f}円）'
+        )
+    except Exception as e:
+        messages.error(request, f'請求書生成エラー: {e}')
+        return redirect('timesheet_detail', pk=pk)
+
+    return redirect(f"{reverse('timesheet_dashboard')}?ym={ts.billing_ym}")
+
+
+# --- 請求管理 ---
+@login_required
+def invoice_list(request):
+    from datetime import date
+
+    today = date.today()
+    ym = request.GET.get('ym', '')
+    if not ym or len(ym) != 6:
+        ym = today.strftime('%Y%m')
+
+    year = int(ym[:4])
+    month = int(ym[4:6])
+
+    if month == 1:
+        prev_ym = f"{year - 1}12"
+    else:
+        prev_ym = f"{year}{month - 1:02d}"
+    if month == 12:
+        next_ym = f"{year + 1}01"
+    else:
+        next_ym = f"{year}{month + 1:02d}"
+
+    invoices = Invoice.objects.filter(billing_ym=ym).select_related(
+        'assignment', 'assignment__upstream_entity', 'assignment__worker_entity'
+    ).order_by('assignment__worker_entity__name')
+
+    sent_count = invoices.filter(status='sent').count()
+    total_count = invoices.count()
+
+    return render(request, 'invoice_list.html', {
+        'invoices': invoices,
+        'ym': ym,
+        'year': year,
+        'month': month,
+        'prev_ym': prev_ym,
+        'next_ym': next_ym,
+        'sent_count': sent_count,
+        'total_count': total_count,
+    })
+
+
+@login_required
+def invoice_upload(request):
+    from decimal import Decimal
+    from django.contrib import messages
+    import os
+    import tempfile
+    from system_app.services.timesheet_parsers.xlsx_generic import parse_timesheet_xlsx_generic
+    from system_app.services.invoicing import create_or_update_invoice_from_parsed
+
+    if request.method != 'POST':
+        return redirect('invoice_list')
+
+    assignment_id = request.POST.get('assignment_id')
+    billing_year = request.POST.get('billing_year', '').strip()
+    billing_month = request.POST.get('billing_month', '').strip()
+    uploaded = request.FILES.get('file')
+    actual_hours_input = request.POST.get('actual_hours', '').strip()
+
+    if not assignment_id or not uploaded:
+        messages.error(request, '案件とファイルは必須です。')
+        return redirect('invoice_list')
+
+    # フォーム入力があればそちら優先、空ならパーサに任せる
+    form_billing_ym = f"{billing_year}{billing_month}" if billing_year and billing_month else None
+    fallback_hours = Decimal(actual_hours_input) if actual_hours_input else None
+
+    # 一時ファイルに保存してパース
+    suffix = os.path.splitext(uploaded.name)[1]
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+        for chunk in uploaded.chunks():
+            tmp.write(chunk)
+        tmp_path = tmp.name
+
+    try:
+        if suffix.lower() == '.pdf':
+            from system_app.services.timesheet_parsers.pdf_generic import parse_timesheet_pdf_generic
+            parsed = parse_timesheet_pdf_generic(tmp_path)
+        else:
+            parsed = parse_timesheet_xlsx_generic(tmp_path)
+        # フォーム入力があればパーサ結果を上書き（フォーム優先）
+        if form_billing_ym:
+            parsed["billing_ym"] = {"value": form_billing_ym, "confidence": 1.0, "cell": None, "evidence": "フォーム入力"}
+        if fallback_hours is not None:
+            parsed["actual_hours"] = {"value": fallback_hours, "confidence": 1.0, "cell": None, "evidence": "フォーム入力"}
+        inv = create_or_update_invoice_from_parsed(
+            assignment_id=int(assignment_id),
+            parsed=parsed,
+            fallback_travel_amount=Decimal("0"),
+        )
+        messages.success(
+            request,
+            f'請求書ドラフトを作成しました（{inv.billing_ym} / 合計 {inv.total_amount:,.0f}円）'
+        )
+    except Exception as e:
+        messages.error(request, f'エラー: {e}')
+    finally:
+        os.unlink(tmp_path)
+
+    return redirect('invoice_list')
+
+
+@login_required
+def invoice_detail(request, invoice_id):
+    from datetime import date
+    from decimal import Decimal
+    from django.contrib import messages
+    from system_app.services.contracts import get_active_contract
+    from system_app.services.invoice_calculator import (
+        calculate_invoice_lines,
+        default_due_date,
+        generate_invoice_number,
+        recalculate_totals,
+    )
+
+    invoice = get_object_or_404(
+        Invoice.objects.select_related('assignment', 'assignment__upstream_entity'),
+        id=invoice_id,
+    )
+    lines = invoice.lines.all().order_by('display_order')
+
+    # 該当契約を取得
+    try:
+        contract = get_active_contract(invoice.assignment, invoice.billing_ym)
+    except Exception:
+        contract = None
+
+    # 表示用デフォルト値（DBには書き込まない）
+    display_invoice_number = invoice.invoice_number or generate_invoice_number(
+        invoice.billing_ym, exclude_invoice_id=invoice.id
+    )
+    display_issue_date = invoice.issue_date or date.today()
+    display_due_date = invoice.due_date
+    if not display_due_date and contract:
+        display_due_date = default_due_date(invoice.billing_ym, contract.upstream_payment_terms)
+    display_actual_hours = invoice.actual_hours
+    if not display_actual_hours and contract:
+        excess_line = invoice.lines.filter(kind='excess').first()
+        deduction_line = invoice.lines.filter(kind='deduction').first()
+        if excess_line and contract.upper_limit_hours:
+            display_actual_hours = contract.upper_limit_hours + excess_line.quantity
+        elif deduction_line and contract.lower_limit_hour:
+            display_actual_hours = contract.lower_limit_hour - deduction_line.quantity
+        elif contract.upper_limit_hours and contract.lower_limit_hour:
+            display_actual_hours = contract.upper_limit_hours
+
+    if request.method == 'POST':
+        # ヘッダ情報の更新
+        header_invoice_number = request.POST.get('header_invoice_number', '').strip()
+        header_issue_date = request.POST.get('header_issue_date', '').strip()
+        header_due_date = request.POST.get('header_due_date', '').strip()
+
+        invoice.invoice_number = header_invoice_number or None
+        invoice.issue_date = header_issue_date or None
+        invoice.due_date = header_due_date or None
+
+        # 契約情報の更新
+        if contract:
+            def _post_int(name):
+                v = request.POST.get(name, '').strip()
+                return int(v) if v else None
+            def _post_dec(name):
+                v = request.POST.get(name, '').strip()
+                return Decimal(v) if v else None
+
+            contract.unit_price = _post_int('ct_unit_price') or contract.unit_price
+            contract.lower_limit_hour = _post_dec('ct_lower_limit_hour')
+            contract.upper_limit_hours = _post_dec('ct_upper_limit_hours')
+            contract.deduction_unit_price = _post_int('ct_deduction_unit_price')
+            contract.excess_unit_price = _post_int('ct_excess_unit_price')
+            contract.settlement_unit_minutes = _post_int('ct_settlement_unit_minutes')
+            contract.upstream_payment_terms = _post_int('ct_upstream_payment_terms')
+            contract.save()
+
+        # 明細行の更新
+        def _strip_comma(v):
+            return v.replace(',', '').strip() if v else v
+
+        for line in lines:
+            prefix = f"line_{line.id}"
+            item_name = request.POST.get(f"{prefix}_item_name")
+            quantity = request.POST.get(f"{prefix}_quantity")
+            unit_price = _strip_comma(request.POST.get(f"{prefix}_unit_price"))
+            amount = _strip_comma(request.POST.get(f"{prefix}_amount"))
+
+            if item_name is not None:
+                line.item_name = item_name
+                line.quantity = Decimal(quantity) if quantity else line.quantity
+                line.unit_price = Decimal(unit_price) if unit_price else line.unit_price
+                line.amount = Decimal(amount) if amount else line.amount
+                line.save()
+
+        # 交通費の更新（0なら削除、値があれば作成/更新）
+        expense_raw = _strip_comma(request.POST.get('expense_amount', ''))
+        expense_val = Decimal(expense_raw) if expense_raw else Decimal("0")
+        expense_line = invoice.lines.filter(kind='expense').first()
+        if expense_val > 0:
+            if expense_line:
+                expense_line.amount = expense_val
+                expense_line.unit_price = expense_val
+                expense_line.save()
+            else:
+                InvoiceLine.objects.create(
+                    invoice=invoice,
+                    kind='expense',
+                    display_order=40,
+                    item_name='交通費（実費）',
+                    quantity=Decimal("1"),
+                    unit_price=expense_val,
+                    amount=expense_val,
+                )
+        elif expense_line:
+            expense_line.delete()
+
+        # 集計再計算
+        invoice.save()
+        recalculate_totals(invoice)
+
+        action = request.POST.get('action', 'save')
+
+        if action == 'recalc' and contract:
+            actual_h = request.POST.get('header_actual_hours', '').strip()
+            if actual_h:
+                invoice.actual_hours = Decimal(actual_h)
+            if invoice.actual_hours:
+                travel_line = invoice.lines.filter(kind='expense').first()
+                travel_amount = travel_line.amount if travel_line else Decimal("0")
+
+                line_dicts = calculate_invoice_lines(
+                    assignment=invoice.assignment,
+                    contract=contract,
+                    billing_ym=invoice.billing_ym,
+                    actual_hours=invoice.actual_hours,
+                    travel_amount=travel_amount,
+                )
+                invoice.lines.all().delete()
+                for ld in line_dicts:
+                    InvoiceLine.objects.create(invoice=invoice, **ld)
+
+                invoice.save()
+                recalculate_totals(invoice)
+                messages.success(request, '契約条件から明細を再計算しました。')
+            else:
+                messages.warning(request, '実稼働時間が未入力のため再計算できません。')
+            return redirect('invoice_detail', invoice_id=invoice.id)
+
+        if action == 'export':
+            from system_app.services.invoice_exporters.excel import export_invoice_to_template_xlsx
+            result = export_invoice_to_template_xlsx(invoice.id)
+            return FileResponse(
+                open(result["file_path"], "rb"),
+                content_type=result["content_type"],
+                as_attachment=True,
+                filename=result["file_name"],
+            )
+
+        messages.success(request, '下書きを保存しました。')
+        return redirect('invoice_detail', invoice_id=invoice.id)
+
+    expense_line = invoice.lines.filter(kind='expense').first()
+    expense_amount = expense_line.amount if expense_line else Decimal("0")
+
+    return render(request, 'invoice_detail.html', {
+        'invoice': invoice,
+        'lines': lines,
+        'contract': contract,
+        'subtotal_with_tax': invoice.subtotal_amount + invoice.tax_amount,
+        'expense_amount': expense_amount,
+        'display_invoice_number': display_invoice_number,
+        'display_issue_date': display_issue_date,
+        'display_due_date': display_due_date,
+        'display_actual_hours': display_actual_hours,
+    })
+
+
+@login_required
+def invoice_finalize_view(request, invoice_id):
+    from django.contrib import messages
+    from system_app.services.invoice_finalize import finalize_invoice
+
+    if request.method != 'POST':
+        return redirect('invoice_list')
+
+    try:
+        inv = finalize_invoice(invoice_id)
+        messages.success(
+            request,
+            f'請求書を確定しました（{inv.invoice_number} / 支払期日 {inv.due_date}）'
+        )
+    except Exception as e:
+        messages.error(request, f'確定エラー: {e}')
+
+    return redirect('invoice_list')
+
+
+@login_required
+def invoice_toggle_sent(request, invoice_id):
+    invoice = get_object_or_404(Invoice, id=invoice_id)
+    if invoice.status == 'sent':
+        invoice.status = 'draft'
+    else:
+        invoice.status = 'sent'
+    invoice.save()
+    next_url = request.POST.get('next', '')
+    if next_url:
+        return redirect(f"{reverse('invoice_list')}{next_url}")
+    return redirect('invoice_list')
+
+
+@login_required
+def invoice_export_xlsx(request, invoice_id):
+    from django.http import FileResponse
+    from system_app.services.invoice_exporters.excel import export_invoice_to_template_xlsx
+    result = export_invoice_to_template_xlsx(invoice_id)
+    return FileResponse(
+        open(result["file_path"], "rb"),
+        content_type=result["content_type"],
+        as_attachment=True,
+        filename=result["file_name"],
+    )

@@ -50,6 +50,21 @@ urlpatterns = [
     path('login/', auth_views.LoginView.as_view(template_name='registration/login.html'), name='login'),
     path('logout/', auth_views.LogoutView.as_view(), name='logout'),
 
+    # --- 勤務表回収 ---
+    path('timesheets/', views.timesheet_dashboard, name='timesheet_dashboard'),
+    path('timesheets/upload/', views.timesheet_upload, name='timesheet_upload'),
+    path('timesheets/<int:pk>/', views.timesheet_detail, name='timesheet_detail'),
+    path('timesheets/<int:pk>/download/', views.timesheet_download, name='timesheet_download'),
+    path('timesheets/<int:pk>/generate-invoice/', views.timesheet_generate_invoice, name='timesheet_generate_invoice'),
+
+    # --- 請求管理 ---
+    path('invoices/', views.invoice_list, name='invoice_list'),
+    path('invoices/upload/', views.invoice_upload, name='invoice_upload'),
+    path('invoices/<int:invoice_id>/', views.invoice_detail, name='invoice_detail'),
+    path('invoices/<int:invoice_id>/finalize/', views.invoice_finalize_view, name='invoice_finalize'),
+    path('invoices/<int:invoice_id>/export-xlsx/', views.invoice_export_xlsx, name='invoice_export_xlsx'),
+    path('invoices/<int:invoice_id>/toggle-sent/', views.invoice_toggle_sent, name='invoice_toggle_sent'),
+
     # --- 名刺管理 ---
     path('business-cards/', views.business_card_list, name='business_card_list'),
 

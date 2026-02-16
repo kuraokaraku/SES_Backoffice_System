@@ -7,3 +7,12 @@ venv/.venv/
 .DS_Store
 db.sqlite3.backup.*
 venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+staticfiles/
+*.sqlite3
+.DS_Store
