@@ -172,3 +172,68 @@ def generate_invoice_number(billing_ym, exclude_invoice_id=None):
         qs = qs.exclude(id=exclude_invoice_id)
     suffix = chr(ord("A") + qs.count())
     return f"{billing_ym}{suffix}"
+
+
+# =====================================================
+# 買掛（Payable）向けラッパー
+# =====================================================
+
+class _DownstreamProxy:
+    """ServiceContract の downstream_* を upstream 名に読み替えるプロキシ"""
+
+    def __init__(self, contract):
+        self.unit_price = contract.downstream_unit_price
+        self.is_fixed_fee = contract.downstream_is_fixed_fee
+        self.lower_limit_hour = contract.downstream_lower_limit_hour
+        self.upper_limit_hours = contract.downstream_upper_limit_hours
+        self.deduction_unit_price = contract.downstream_deduction_unit_price
+        self.excess_unit_price = contract.downstream_excess_unit_price
+        self.settlement_unit_minutes = contract.downstream_settlement_unit_minutes
+        self.travel_expense_included = contract.travel_expense_included
+
+
+def calculate_payable_lines(assignment, contract, billing_ym, actual_hours, travel_amount):
+    """
+    下位向け買掛明細行を生成する。
+    contract の downstream_* フィールドを使い、calculate_invoice_lines() に委譲。
+    """
+    proxy = _DownstreamProxy(contract)
+    return calculate_invoice_lines(
+        assignment=assignment,
+        contract=proxy,
+        billing_ym=billing_ym,
+        actual_hours=actual_hours,
+        travel_amount=travel_amount,
+    )
+
+
+def recalculate_payable_totals(payable):
+    """
+    payable の明細行から小計・税・合計を再計算して保存する。
+    recalculate_totals() と同一ロジック。
+    """
+    lines = payable.lines.all()
+    subtotal = sum(l.amount for l in lines if l.kind != "expense")
+    expense_total = sum(l.amount for l in lines if l.kind == "expense")
+    tax = (subtotal * payable.tax_rate).to_integral_value(rounding=ROUND_DOWN)
+
+    payable.subtotal_amount = subtotal
+    payable.tax_amount = tax
+    payable.total_amount = subtotal + tax + expense_total
+    payable.save()
+
+
+def generate_payable_number(billing_ym, exclude_payable_id=None):
+    """
+    P{YYYYMM}{A,B,C...} 形式の買掛番号を生成する。
+    """
+    from system_app.models import Payable
+
+    qs = Payable.objects.filter(
+        billing_ym=billing_ym,
+        payable_number__isnull=False,
+    )
+    if exclude_payable_id:
+        qs = qs.exclude(id=exclude_payable_id)
+    suffix = chr(ord("A") + qs.count())
+    return f"P{billing_ym}{suffix}"

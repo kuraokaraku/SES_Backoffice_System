@@ -2,7 +2,88 @@
 {% load humanize l10n %}
 
 {% block content %}
-<div class="container mt-4">
+<style>
+/* Excel表示 — 全体を縮小して俯瞰できるように */
+.excel-pane {
+    overflow: auto;
+    max-height: 82vh;
+    border: 1px solid var(--sf-border);
+    border-radius: var(--sf-radius);
+    background: #f9f9f9;
+}
+.excel-pane-inner {
+    transform-origin: top left;
+}
+.zoom-controls {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: auto;
+    font-size: 0.8rem;
+}
+.zoom-controls button {
+    width: 28px; height: 28px;
+    padding: 0; line-height: 1;
+    font-size: 1rem;
+}
+.excel-sheet { border-collapse: collapse; font-size: 11px; font-family: "Yu Gothic", "Meiryo", sans-serif; }
+.excel-sheet td {
+    border: 1px solid #d0d0d0;
+    padding: 2px 4px;
+    white-space: nowrap;
+}
+.excel-sheet td.highlight {
+    background-color: #fff3cd !important;
+    outline: 3px solid #ff9800;
+    box-shadow: 0 0 8px 2px rgba(255, 152, 0, 0.5);
+    position: relative;
+    z-index: 1;
+}
+.sheet-tabs .nav-link { font-size: 0.85rem; padding: 0.35rem 0.75rem; }
+.sheet-tabs .nav-link.active { font-weight: bold; }
+.sheet-content { display: none; }
+.sheet-content.active { display: block; }
+.confidence-badge {
+    font-size: 0.75rem;
+    padding: 2px 6px;
+    border-radius: 3px;
+}
+.confidence-high { background-color: #e6f4ea; color: var(--sf-success); }
+.confidence-mid { background-color: #fef3e0; color: #a86800; }
+.confidence-low { background-color: #fde7e9; color: var(--sf-error); }
+/* PDF表示 */
+.pdf-pane {
+    overflow: auto;
+    max-height: 82vh;
+    background: #525659;
+    border: 1px solid var(--sf-border);
+    border-radius: var(--sf-radius);
+    padding: 8px;
+}
+.pdf-page-wrapper {
+    position: relative;
+    margin-bottom: 8px;
+}
+.pdf-page-wrapper canvas {
+    display: block;
+    margin: 0 auto;
+}
+.pdf-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    pointer-events: none;
+}
+.pdf-highlight {
+    position: absolute;
+    background-color: rgba(255, 243, 205, 0.4);
+    outline: 2px solid #ff9800;
+    box-shadow: 0 0 8px 2px rgba(255, 152, 0, 0.5);
+    pointer-events: none;
+}
+</style>
+
+<div class="container-fluid">
     {% if messages %}
     {% for message in messages %}
     <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
@@ -12,103 +93,355 @@
     {% endfor %}
     {% endif %}
 
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2 class="mb-0">勤務表詳細</h2>
-        <div>
-            <a href="{% url 'timesheet_download' ts.pk %}" class="btn btn-outline-info">ダウンロード</a>
-            <a href="{% url 'timesheet_dashboard' %}?ym={{ ts.billing_ym }}" class="btn btn-outline-secondary">一覧に戻る</a>
+    <!-- SF Page Header -->
+    <div class="sf-page-header">
+        <div class="sf-title-group">
+            <div class="sf-icon"><i class="bi bi-file-earmark-check"></i></div>
+            <div>
+                <h2>勤務表詳細</h2>
+                <div class="sf-subtitle">{{ ts.assignment.worker_entity.name }} / {{ ts.billing_ym }}</div>
+            </div>
+        </div>
+        <div class="d-flex gap-2">
+            <a href="{% url 'timesheet_download' ts.pk %}" class="btn btn-sf-outline btn-sm">
+                <i class="bi bi-download me-1"></i>ダウンロード
+            </a>
+            <a href="{% url 'timesheet_dashboard' %}?ym={{ ts.billing_ym }}" class="btn btn-sf-outline btn-sm">一覧に戻る</a>
         </div>
     </div>
 
     <div class="row">
-        <!-- 基本情報 -->
-        <div class="col-md-6 mb-4">
-            <div class="card border-0 shadow-sm h-100">
-                <div class="card-header bg-dark text-white">基本情報</div>
-                <div class="card-body">
-                    <dl class="row mb-0">
-                        <dt class="col-sm-5">ワーカー</dt>
-                        <dd class="col-sm-7">{{ ts.assignment.worker_entity.name }}</dd>
-                        <dt class="col-sm-5">案件</dt>
-                        <dd class="col-sm-7">{{ ts.assignment.project_name|default:"-" }}</dd>
-                        <dt class="col-sm-5">対象年月</dt>
-                        <dd class="col-sm-7">{{ ts.billing_ym }}</dd>
-                        <dt class="col-sm-5">ステータス</dt>
-                        <dd class="col-sm-7">
+        <!-- 左ペイン: プレビュー -->
+        <div class="col-lg-7 mb-4">
+            {% if excel_sheets %}
+            <div class="d-flex align-items-end mb-0">
+                <ul class="nav nav-tabs sheet-tabs mb-0 flex-grow-1" role="tablist">
+                    {% for sheet in excel_sheets %}
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link {% if forloop.first %}active{% endif %}"
+                                type="button"
+                                onclick="switchSheet('{{ forloop.counter0 }}')">
+                            {{ sheet.name }}
+                        </button>
+                    </li>
+                    {% endfor %}
+                </ul>
+                <div class="zoom-controls pb-1">
+                    <button class="btn btn-outline-secondary btn-sm" onclick="zoom(-1)" title="縮小">−</button>
+                    <span id="zoom-label">50%</span>
+                    <button class="btn btn-outline-secondary btn-sm" onclick="zoom(1)" title="拡大">+</button>
+                </div>
+            </div>
+            <div class="excel-pane" id="excel-pane">
+                <div class="excel-pane-inner">
+                    {% for sheet in excel_sheets %}
+                    <div class="sheet-content {% if forloop.first %}active{% endif %}"
+                         id="sheet-{{ forloop.counter0 }}">
+                        {{ sheet.html|safe }}
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% elif is_pdf %}
+            <div class="d-flex align-items-end mb-0">
+                <span class="text-muted small flex-grow-1">PDF プレビュー</span>
+                <div class="zoom-controls pb-1">
+                    <button class="btn btn-outline-secondary btn-sm" onclick="pdfZoom(-1)" title="縮小">−</button>
+                    <span id="pdf-zoom-label">120%</span>
+                    <button class="btn btn-outline-secondary btn-sm" onclick="pdfZoom(1)" title="拡大">+</button>
+                </div>
+            </div>
+            <div class="pdf-pane" id="pdf-pane">
+                <div id="pdf-container"></div>
+            </div>
+            {% elif is_excel %}
+            <div class="sf-section">
+                <div class="sf-section-body text-center py-5" style="color:var(--sf-text-muted)">
+                    <p>Excelプレビューの生成に失敗しました。</p>
+                    <a href="{% url 'timesheet_download' ts.pk %}" class="btn btn-sf-outline">ファイルをダウンロード</a>
+                </div>
+            </div>
+            {% else %}
+            <div class="sf-section">
+                <div class="sf-section-body text-center py-5" style="color:var(--sf-text-muted)">
+                    <p>プレビュー未対応の形式です。</p>
+                    <a href="{% url 'timesheet_download' ts.pk %}" class="btn btn-sf-outline">ファイルをダウンロード</a>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- 右ペイン: 基本情報 + パース結果 -->
+        <div class="col-lg-5 mb-4">
+            <!-- 基本情報 -->
+            <div class="sf-section mb-3">
+                <div class="sf-section-header">
+                    <i class="bi bi-info-circle" style="color:var(--sf-blue)"></i> 基本情報
+                </div>
+                <div class="sf-section-body py-2">
+                    <dl class="row mb-0 small">
+                        <dt class="col-5">ワーカー</dt>
+                        <dd class="col-7">{{ ts.assignment.worker_entity.name }}</dd>
+                        <dt class="col-5">案件</dt>
+                        <dd class="col-7">{{ ts.assignment.project_name|default:"-" }}</dd>
+                        <dt class="col-5">対象年月</dt>
+                        <dd class="col-7">{{ ts.billing_ym }}</dd>
+                        <dt class="col-5">ステータス</dt>
+                        <dd class="col-7">
                             {% if ts.status == 'received' %}
-                            <span class="badge bg-warning text-dark">受領済</span>
+                            <span class="sf-badge sf-badge-warning">受領済</span>
                             {% elif ts.status == 'processed' %}
-                            <span class="badge bg-success">処理済</span>
+                            <span class="sf-badge sf-badge-success">処理済</span>
                             {% endif %}
                         </dd>
-                        <dt class="col-sm-5">元ファイル名</dt>
-                        <dd class="col-sm-7 text-break">{{ ts.original_filename }}</dd>
-                        <dt class="col-sm-5">受領日時</dt>
-                        <dd class="col-sm-7">{{ ts.received_at|date:"Y/m/d H:i" }}</dd>
+                        <dt class="col-5">元ファイル名</dt>
+                        <dd class="col-7 text-break">{{ ts.original_filename }}</dd>
+                        <dt class="col-5">受領日時</dt>
+                        <dd class="col-7">{{ ts.received_at|date:"Y/m/d H:i" }}</dd>
                     </dl>
                 </div>
             </div>
-        </div>
 
-        <!-- パース結果・編集 -->
-        <div class="col-md-6 mb-4">
-            <div class="card border-0 shadow-sm h-100">
-                <div class="card-header bg-dark text-white">パース結果</div>
-                <div class="card-body">
+            <!-- パース結果・編集 -->
+            <div class="sf-section mb-3">
+                <div class="sf-section-header">
+                    <i class="bi bi-cpu" style="color:var(--sf-warning)"></i> パース結果
+                </div>
+                <div class="sf-section-body py-2">
                     <form method="post">
                         {% csrf_token %}
-                        <div class="mb-3">
-                            <label class="form-label">実稼働時間</label>
-                            {% localize off %}
-                            <input type="number" name="actual_hours" class="form-control" step="0.01"
-                                value="{{ ts.actual_hours|default_if_none:'' }}">
-                            {% endlocalize %}
-                            {% if ts.parse_confidence.actual_hours %}
-                            <small class="text-muted">信頼度: {{ ts.parse_confidence.actual_hours }}</small>
+                        <div class="mb-2">
+                            <label class="form-label small mb-1">実稼働時間</label>
+                            <div class="input-group input-group-sm">
+                                {% localize off %}
+                                <input type="number" name="actual_hours" class="form-control" step="0.01"
+                                    value="{{ ts.actual_hours|default_if_none:'' }}">
+                                {% endlocalize %}
+                                {% if confidence_display.actual_hours %}
+                                {% with cd=confidence_display.actual_hours %}
+                                <span class="input-group-text confidence-badge {% if cd.confidence >= 0.8 %}confidence-high{% elif cd.confidence >= 0.6 %}confidence-mid{% else %}confidence-low{% endif %}"
+                                      title="{{ cd.evidence|default:'' }}">
+                                    {{ cd.confidence|floatformat:2 }}
+                                </span>
+                                {% endwith %}
+                                {% endif %}
+                            </div>
+                            {% if confidence_display.actual_hours.cell %}
+                            <small style="color:var(--sf-text-muted)">{{ confidence_display.actual_hours.sheet }}!{{ confidence_display.actual_hours.cell }}</small>
                             {% endif %}
                         </div>
-                        <div class="mb-3">
-                            <label class="form-label">交通費</label>
-                            {% localize off %}
-                            <input type="number" name="travel_amount" class="form-control" step="1"
-                                value="{{ ts.travel_amount|default_if_none:'' }}">
-                            {% endlocalize %}
-                            {% if ts.parse_confidence.travel_amount %}
-                            <small class="text-muted">信頼度: {{ ts.parse_confidence.travel_amount }}</small>
+                        <div class="mb-2">
+                            <label class="form-label small mb-1">交通費</label>
+                            <div class="input-group input-group-sm">
+                                {% localize off %}
+                                <input type="number" name="travel_amount" class="form-control" step="1"
+                                    value="{{ ts.travel_amount|default_if_none:'' }}">
+                                {% endlocalize %}
+                                {% if confidence_display.travel_amount %}
+                                {% with cd=confidence_display.travel_amount %}
+                                <span class="input-group-text confidence-badge {% if cd.confidence >= 0.8 %}confidence-high{% elif cd.confidence >= 0.6 %}confidence-mid{% else %}confidence-low{% endif %}"
+                                      title="{{ cd.evidence|default:'' }}">
+                                    {{ cd.confidence|floatformat:2 }}
+                                </span>
+                                {% endwith %}
+                                {% endif %}
+                            </div>
+                            {% if confidence_display.travel_amount.cell %}
+                            <small style="color:var(--sf-text-muted)">{{ confidence_display.travel_amount.sheet }}!{{ confidence_display.travel_amount.cell }}</small>
                             {% endif %}
                         </div>
-                        <div class="mb-3">
-                            <label class="form-label">備考</label>
-                            <textarea name="notes" class="form-control" rows="3">{{ ts.notes }}</textarea>
+                        <div class="mb-2">
+                            <label class="form-label small mb-1">備考</label>
+                            <textarea name="notes" class="form-control form-control-sm" rows="2">{{ ts.notes }}</textarea>
                         </div>
-                        <button type="submit" class="btn btn-primary">保存</button>
+                        <button type="submit" class="btn btn-sf-primary btn-sm">保存</button>
                     </form>
+                </div>
+            </div>
+
+            <!-- 操作ボタン -->
+            <div class="sf-section">
+                <div class="sf-section-body py-2">
+                    <div class="d-flex flex-column gap-2">
+                        {% if ts.status == 'received' %}
+                        <form method="post" action="{% url 'timesheet_generate_invoice' ts.pk %}">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-sm w-100" style="background:var(--sf-success);color:#fff">請求書を作成</button>
+                        </form>
+                        {% endif %}
+
+                        {% if ts.invoice %}
+                        <a href="{% url 'invoice_detail' ts.invoice.id %}" class="btn btn-sf-outline btn-sm w-100">請求書を確認</a>
+                        {% endif %}
+
+                        <form method="post" action="{% url 'timesheet_upload' %}" enctype="multipart/form-data">
+                            {% csrf_token %}
+                            <input type="hidden" name="assignment_id" value="{{ ts.assignment_id }}">
+                            <input type="hidden" name="billing_ym" value="{{ ts.billing_ym }}">
+                            <div class="input-group input-group-sm">
+                                <input type="file" name="file" class="form-control" required accept=".xlsx,.xls,.pdf">
+                                <button type="submit" class="btn btn-sf-outline btn-sm" style="color:var(--sf-warning);border-color:var(--sf-warning)">再アップロード</button>
+                            </div>
+                        </form>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
-
-    <!-- 操作ボタン -->
-    <div class="d-flex gap-2 mb-4">
-        {% if ts.status == 'received' %}
-        <form method="post" action="{% url 'timesheet_generate_invoice' ts.pk %}">
-            {% csrf_token %}
-            <button type="submit" class="btn btn-success btn-lg">請求書を作成</button>
-        </form>
-        {% endif %}
-
-        {% if ts.invoice %}
-        <a href="{% url 'invoice_detail' ts.invoice.id %}" class="btn btn-outline-primary btn-lg">請求書を確認</a>
-        {% endif %}
-
-        <!-- 再アップロード -->
-        <form method="post" action="{% url 'timesheet_upload' %}" enctype="multipart/form-data" class="d-flex gap-2">
-            {% csrf_token %}
-            <input type="hidden" name="assignment_id" value="{{ ts.assignment_id }}">
-            <input type="hidden" name="billing_ym" value="{{ ts.billing_ym }}">
-            <input type="file" name="file" class="form-control" required accept=".xlsx,.xls,.pdf">
-            <button type="submit" class="btn btn-outline-warning">再アップロード</button>
-        </form>
-    </div>
 </div>
+
+{% if is_pdf %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.9.155/pdf.min.mjs" type="module"></script>
+<script type="module">
+import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.9.155/pdf.min.mjs';
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.9.155/pdf.worker.min.mjs';
+
+const pdfUrl = '{{ pdf_url }}';
+const highlights = {{ pdf_highlights_json|safe }};
+
+const PDF_ZOOM_STEPS = [0.6, 0.8, 1.0, 1.2, 1.5, 2.0];
+let pdfZoomIdx = 3;
+let pdfDoc = null;
+
+window.pdfZoom = function(dir) {
+    const next = pdfZoomIdx + dir;
+    if (next < 0 || next >= PDF_ZOOM_STEPS.length) return;
+    pdfZoomIdx = next;
+    document.getElementById('pdf-zoom-label').textContent = Math.round(PDF_ZOOM_STEPS[pdfZoomIdx] * 100) + '%';
+    renderAllPages();
+};
+
+async function renderAllPages() {
+    if (!pdfDoc) return;
+    const container = document.getElementById('pdf-container');
+    container.innerHTML = '';
+    const scale = PDF_ZOOM_STEPS[pdfZoomIdx];
+    let firstHighlightEl = null;
+
+    for (let i = 1; i <= pdfDoc.numPages; i++) {
+        const page = await pdfDoc.getPage(i);
+        const viewport = page.getViewport({ scale: scale });
+
+        const wrapper = document.createElement('div');
+        wrapper.className = 'pdf-page-wrapper';
+        wrapper.style.width = viewport.width + 'px';
+        wrapper.style.height = viewport.height + 'px';
+        wrapper.style.margin = '0 auto 8px auto';
+
+        const canvas = document.createElement('canvas');
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        wrapper.appendChild(canvas);
+
+        const ctx = canvas.getContext('2d');
+        await page.render({ canvasContext: ctx, viewport: viewport }).promise;
+
+        const overlay = document.createElement('div');
+        overlay.className = 'pdf-overlay';
+        overlay.style.width = viewport.width + 'px';
+        overlay.style.height = viewport.height + 'px';
+
+        const pageHighlights = highlights.filter(function(h) { return h.page === i - 1; });
+        pageHighlights.forEach(function(h) {
+            const bbox = h.bbox;
+            if (!bbox || bbox.length < 4) return;
+            const div = document.createElement('div');
+            div.className = 'pdf-highlight';
+            div.style.left = (bbox[0] * scale) + 'px';
+            div.style.top = (bbox[1] * scale) + 'px';
+            div.style.width = ((bbox[2] - bbox[0]) * scale) + 'px';
+            div.style.height = ((bbox[3] - bbox[1]) * scale) + 'px';
+            div.title = h.label;
+            overlay.appendChild(div);
+            if (!firstHighlightEl) firstHighlightEl = div;
+        });
+
+        wrapper.appendChild(overlay);
+        container.appendChild(wrapper);
+    }
+
+    if (firstHighlightEl) {
+        setTimeout(function() {
+            const pane = document.getElementById('pdf-pane');
+            const hlRect = firstHighlightEl.getBoundingClientRect();
+            const paneRect = pane.getBoundingClientRect();
+            pane.scrollBy({
+                top: hlRect.top - paneRect.top - pane.clientHeight / 3,
+                left: hlRect.left - paneRect.left - pane.clientWidth / 3,
+                behavior: 'smooth'
+            });
+        }, 100);
+    }
+}
+
+const loadingTask = pdfjsLib.getDocument(pdfUrl);
+loadingTask.promise.then(function(pdf) {
+    pdfDoc = pdf;
+    renderAllPages();
+}).catch(function(err) {
+    document.getElementById('pdf-container').innerHTML =
+        '<div class="text-center text-light py-5"><p>PDFの読み込みに失敗しました。</p><p class="small">' + err.message + '</p></div>';
+});
+</script>
+{% endif %}
+
+<script>
+var ZOOM_STEPS = [0.3, 0.4, 0.5, 0.6, 0.75, 0.9, 1.0];
+var currentZoomIdx = 2;
+
+function applyZoom() {
+    var scale = ZOOM_STEPS[currentZoomIdx];
+    var inner = document.querySelector('.excel-pane-inner');
+    if (!inner) return;
+    inner.style.transform = 'scale(' + scale + ')';
+    inner.style.width = (100 / scale) + '%';
+    document.getElementById('zoom-label').textContent = Math.round(scale * 100) + '%';
+}
+
+function zoom(dir) {
+    var next = currentZoomIdx + dir;
+    if (next < 0 || next >= ZOOM_STEPS.length) return;
+    currentZoomIdx = next;
+    applyZoom();
+}
+
+function switchSheet(idx) {
+    document.querySelectorAll('.sheet-content').forEach(function(el) { el.classList.remove('active'); });
+    document.querySelectorAll('.sheet-tabs .nav-link').forEach(function(el) { el.classList.remove('active'); });
+    document.getElementById('sheet-' + idx).classList.add('active');
+    document.querySelectorAll('.sheet-tabs .nav-link')[idx].classList.add('active');
+    setTimeout(scrollToHighlight, 80);
+}
+
+function scrollToHighlight() {
+    var pane = document.getElementById('excel-pane');
+    if (!pane) return;
+    var hl = pane.querySelector('.sheet-content.active .highlight');
+    if (!hl) return;
+    var paneRect = pane.getBoundingClientRect();
+    var hlRect = hl.getBoundingClientRect();
+    var hlCenterY = hlRect.top + hlRect.height / 2;
+    var hlCenterX = hlRect.left + hlRect.width / 2;
+    var paneCenterY = paneRect.top + pane.clientHeight / 2;
+    var paneCenterX = paneRect.left + pane.clientWidth / 2;
+    pane.scrollBy({
+        top: hlCenterY - paneCenterY,
+        left: hlCenterX - paneCenterX,
+        behavior: 'smooth'
+    });
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    applyZoom();
+    var pane = document.getElementById('excel-pane');
+    if (!pane) return;
+    var sheets = document.querySelectorAll('.sheet-content');
+    for (var i = 0; i < sheets.length; i++) {
+        if (sheets[i].querySelector('.highlight')) {
+            switchSheet(i);
+            return;
+        }
+    }
+});
+</script>
 {% endblock %}

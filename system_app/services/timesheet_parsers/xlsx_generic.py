@@ -139,6 +139,33 @@ def _nearby_text(ws, row, col, distance=2):
     return " ".join(texts)
 
 
+def _row_context(ws, row, max_col=None):
+    """指定行の全セルを結合してコンテキスト文字列を返す。"""
+    if max_col is None:
+        max_col = ws.max_column or 1
+    parts = []
+    for c in range(1, max_col + 1):
+        try:
+            v = ws.cell(row=row, column=c).value
+            if v is not None:
+                parts.append(_norm_text(v))
+        except Exception:
+            pass
+    return " | ".join(parts) if parts else ""
+
+
+def _build_cell_context(ws, row, col):
+    """候補セルの周辺コンテキストを構築する（同じ行 + 1行上）。最大150文字。"""
+    max_col = ws.max_column or col
+    same_row = _row_context(ws, row, max_col)
+    above = _row_context(ws, row - 1, max_col) if row > 1 else ""
+    if above:
+        ctx = f"[上行] {above} [当行] {same_row}"
+    else:
+        ctx = same_row
+    return ctx[:150]
+
+
 def _search_value_right_down(ws, row, col, max_col=MAX_COL_DISTANCE, max_row=MAX_ROW_DISTANCE):
     """アンカーセルから右方向→下方向に数値セルを探す。"""
     results = []
@@ -341,6 +368,7 @@ def _find_actual_hours_candidates(ws, sheet_name):
                     "sheet": sheet_name,
                     "confidence": _clamp(score),
                     "evidence": f"セル{_cell_ref(r, c)}に埋め込み値: {text[:50]}",
+                    "context": _build_cell_context(ws, r, c),
                 })
 
             # ルート1: 右方向/下方向探索
@@ -368,6 +396,7 @@ def _find_actual_hours_candidates(ws, sheet_name):
                     "sheet": sheet_name,
                     "confidence": _clamp(score),
                     "evidence": f"{_cell_ref(r, c)}に'{text[:30]}', {f['direction']}方向{_cell_ref(f['row'], f['col'])}に数値{val}",
+                    "context": _build_cell_context(ws, f["row"], f["col"]),
                 })
 
     return candidates
@@ -500,11 +529,12 @@ def parse_timesheet_xlsx_generic(path):
 
     def _to_result(best):
         if best is None:
-            return {"value": None, "confidence": 0.0, "cell": None, "evidence": ""}
+            return {"value": None, "confidence": 0.0, "cell": None, "sheet": None, "evidence": ""}
         return {
             "value": best["value"],
             "confidence": best["confidence"],
             "cell": best["cell"],
+            "sheet": best.get("sheet"),
             "evidence": best["evidence"],
         }
 

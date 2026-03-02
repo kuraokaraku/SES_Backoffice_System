@@ -29,20 +29,30 @@ def _hhmm_to_hours(text):
     return None
 
 
-def _find_billing_ym(text, filename):
-    """テキストとファイル名から対象年月を探す。"""
+def _find_billing_ym(pages, filename):
+    """ページごとのテキスト検索で対象年月を探す（bbox付き）。"""
     candidates = []
 
-    # テキストから探す（日本語パターン優先）
-    for m in _RE_YM_JA.finditer(text):
-        ym = f"{m.group(1)}{int(m.group(2)):02d}"
-        candidates.append({"value": ym, "confidence": 0.90, "source": "text_ja"})
+    for page_idx, page in enumerate(pages):
+        # page.search() でテキスト位置を取得
+        for m in _RE_YM_JA.finditer(page.extract_text() or ""):
+            ym = f"{m.group(1)}{int(m.group(2)):02d}"
+            # search() で bbox を取得
+            bbox = _search_text_bbox(page, m.group(0))
+            candidates.append({
+                "value": ym, "confidence": 0.90, "source": "text_ja",
+                "page_number": page_idx, "bbox": bbox,
+            })
 
-    for m in _RE_YM_SLASH.finditer(text):
-        ym = f"{m.group(1)}{int(m.group(2)):02d}"
-        candidates.append({"value": ym, "confidence": 0.80, "source": "text_slash"})
+        for m in _RE_YM_SLASH.finditer(page.extract_text() or ""):
+            ym = f"{m.group(1)}{int(m.group(2)):02d}"
+            bbox = _search_text_bbox(page, m.group(0))
+            candidates.append({
+                "value": ym, "confidence": 0.80, "source": "text_slash",
+                "page_number": page_idx, "bbox": bbox,
+            })
 
-    # ファイル名から探す
+    # ファイル名から探す（bbox なし）
     for m in _RE_YM_COMPACT.finditer(filename):
         ym = f"{m.group(1)}{m.group(2)}"
         candidates.append({"value": ym, "confidence": 0.70, "source": "filename"})
@@ -52,9 +62,9 @@ def _find_billing_ym(text, filename):
         candidates.append({"value": ym, "confidence": 0.85, "source": "filename_ja"})
 
     # テキスト中に「X月」だけある場合（年がない）→ ファイル名から年を補完
-    month_only = re.findall(r"(?<!\d)(1[0-2]|0?[1-9])\s*月(?!\s*分)", text)
+    all_text = "\n".join((p.extract_text() or "") for p in pages)
+    month_only = re.findall(r"(?<!\d)(1[0-2]|0?[1-9])\s*月(?!\s*分)", all_text)
     if month_only and not candidates:
-        # ファイル名から年だけ取れれば補完
         year_match = re.search(r"(20\d{2})", filename)
         if year_match:
             month = int(month_only[0])
@@ -62,42 +72,88 @@ def _find_billing_ym(text, filename):
             candidates.append({"value": ym, "confidence": 0.60, "source": "text_month_only"})
 
     if not candidates:
-        return None
+        return None, []
 
-    # 最高confidence
     best = max(candidates, key=lambda c: c["confidence"])
-    return best
+    sorted_cands = sorted(candidates, key=lambda c: c["confidence"], reverse=True)
+    return best, sorted_cands[:5]
 
 
-def _find_actual_hours_from_tables(tables):
-    """テーブルから合計時間を探す。"""
+def _extract_bbox_context(page, bbox, left_expand=200, right_expand=50, v_expand=15):
+    """bbox 近傍の words を拾ってコンテキスト文字列を返す。最大150文字。"""
+    if not bbox:
+        return ""
+    try:
+        x0 = max(0, bbox[0] - left_expand)
+        top = max(0, bbox[1] - v_expand)
+        x1 = bbox[2] + right_expand
+        bottom = bbox[3] + v_expand
+        words = page.extract_words()
+        nearby = [
+            w["text"] for w in words
+            if w["x0"] >= x0 and w["top"] >= top
+            and w["x1"] <= x1 and w["bottom"] <= bottom
+        ]
+        return " ".join(nearby)[:150]
+    except Exception:
+        return ""
+
+
+def _search_text_bbox(page, text):
+    """page.search() で テキストの bbox を取得。見つからなければ None。"""
+    try:
+        results = page.search(text)
+        if results:
+            r = results[0]
+            return [r["x0"], r["top"], r["x1"], r["bottom"]]
+    except Exception:
+        pass
+    return None
+
+
+def _find_actual_hours_from_tables(pages):
+    """find_tables() を使って合計時間をbbox付きで探す。"""
     candidates = []
 
-    for table in tables:
-        for ri, row in enumerate(table):
-            row_text = " ".join(str(c or "") for c in row)
+    for page_idx, page in enumerate(pages):
+        tables = page.find_tables()
+        for table_obj in tables:
+            text_rows = table_obj.extract()
+            row_objs = table_obj.rows  # CellGroup objects with .cells
+            if not text_rows:
+                continue
 
-            # 「月間累計」「稼動日数」行の最後のセルに累計時間がある
-            for kw in _TOTAL_KEYWORDS:
-                if kw in row_text:
-                    # 行の右端からHH:MM or 数値を探す
-                    for ci in range(len(row) - 1, -1, -1):
-                        cell = str(row[ci] or "").strip()
-                        if not cell:
-                            continue
-                        hours = _hhmm_to_hours(cell)
-                        if hours and hours > 50:  # 月間の合計っぽい値
-                            candidates.append({
-                                "value": hours,
-                                "confidence": 0.85,
-                                "source": f"table_keyword({kw})",
-                            })
-                            break
-                    break
+            for ri, row in enumerate(text_rows):
+                row_text = " ".join(str(c or "") for c in row)
+
+                for kw in _TOTAL_KEYWORDS:
+                    if kw in row_text:
+                        # 行の右端から HH:MM or 数値を探す
+                        for ci in range(len(row) - 1, -1, -1):
+                            cell = str(row[ci] or "").strip()
+                            if not cell:
+                                continue
+                            hours = _hhmm_to_hours(cell)
+                            if hours and hours > 50:
+                                # セルの bbox を取得
+                                cell_bbox = _get_cell_bbox_from_row(row_objs, ri, ci)
+                                candidates.append({
+                                    "value": hours,
+                                    "confidence": 0.85,
+                                    "source": f"table_keyword({kw})",
+                                    "page_number": page_idx,
+                                    "bbox": cell_bbox,
+                                    "context": _extract_bbox_context(page, cell_bbox) if cell_bbox else row_text[:150],
+                                })
+                                break
+                        break
 
     # テーブルから開始/終了時刻を計算するフォールバック
     if not candidates:
-        total = _calc_hours_from_start_end(tables)
+        all_tables = []
+        for page in pages:
+            all_tables.extend(page.extract_tables())
+        total = _calc_hours_from_start_end(all_tables)
         if total:
             candidates.append({
                 "value": total,
@@ -106,10 +162,24 @@ def _find_actual_hours_from_tables(tables):
             })
 
     if not candidates:
-        return None
+        return None, []
 
     best = max(candidates, key=lambda c: c["confidence"])
-    return best
+    sorted_cands = sorted(candidates, key=lambda c: c["confidence"], reverse=True)
+    return best, sorted_cands[:5]
+
+
+def _get_cell_bbox_from_row(row_objs, row_idx, col_idx):
+    """Table.rows (CellGroup list) から (row_idx, col_idx) のセルの bbox を取得。"""
+    if not row_objs or row_idx >= len(row_objs):
+        return None
+    row_obj = row_objs[row_idx]
+    if not hasattr(row_obj, 'cells') or col_idx >= len(row_obj.cells):
+        return None
+    c = row_obj.cells[col_idx]
+    if c is None:
+        return None
+    return [c[0], c[1], c[2], c[3]]
 
 
 def _calc_hours_from_start_end(tables):
@@ -153,30 +223,50 @@ def _calc_hours_from_start_end(tables):
     return None
 
 
-def _find_actual_hours_from_text(text):
-    """テキストから合計時間を探す（テーブル取得に失敗した場合のフォールバック）。"""
-    lines = text.split("\n")
-    for line in lines:
-        for kw in _TOTAL_KEYWORDS:
-            if kw in line:
-                hours = _hhmm_to_hours(line)
-                if hours and hours > 50:
-                    return {
-                        "value": hours,
-                        "confidence": 0.75,
-                        "source": f"text_keyword({kw})",
-                    }
-                # 数値を探す
-                nums = _RE_HOURS_NUM.findall(line)
-                for n in nums:
-                    v = Decimal(n)
-                    if 50 < v < 300:
-                        return {
-                            "value": v,
-                            "confidence": 0.65,
-                            "source": f"text_num({kw})",
-                        }
-    return None
+def _find_actual_hours_from_text(pages):
+    """ページごとのテキストから合計時間をbbox付きで探す。"""
+    candidates = []
+    for page_idx, page in enumerate(pages):
+        text = page.extract_text() or ""
+        lines = text.split("\n")
+        for line in lines:
+            for kw in _TOTAL_KEYWORDS:
+                if kw in line:
+                    hours = _hhmm_to_hours(line)
+                    if hours and hours > 50:
+                        bbox = _search_text_bbox(page, kw)
+                        candidates.append({
+                            "value": hours,
+                            "confidence": 0.75,
+                            "source": f"text_keyword({kw})",
+                            "page_number": page_idx,
+                            "bbox": bbox,
+                            "context": _extract_bbox_context(page, bbox) if bbox else line.strip()[:150],
+                        })
+                        break
+                    # 数値を探す
+                    nums = _RE_HOURS_NUM.findall(line)
+                    for n in nums:
+                        v = Decimal(n)
+                        if 50 < v < 300:
+                            bbox = _search_text_bbox(page, kw)
+                            candidates.append({
+                                "value": v,
+                                "confidence": 0.65,
+                                "source": f"text_num({kw})",
+                                "page_number": page_idx,
+                                "bbox": bbox,
+                                "context": _extract_bbox_context(page, bbox) if bbox else line.strip()[:150],
+                            })
+                            break
+                    break
+
+    if not candidates:
+        return None, []
+
+    best = max(candidates, key=lambda c: c["confidence"])
+    sorted_cands = sorted(candidates, key=lambda c: c["confidence"], reverse=True)
+    return best, sorted_cands[:5]
 
 
 def parse_timesheet_pdf_generic(path):
@@ -196,29 +286,31 @@ def parse_timesheet_pdf_generic(path):
     filename = Path(path).name
 
     pdf = pdfplumber.open(path)
-    all_text = ""
-    all_tables = []
-
-    for page in pdf.pages:
-        text = page.extract_text() or ""
-        all_text += text + "\n"
-        all_tables.extend(page.extract_tables())
-
-    pdf.close()
+    pages = pdf.pages
 
     # --- billing_ym ---
-    billing_ym = _find_billing_ym(all_text, filename)
+    billing_ym, bym_candidates = _find_billing_ym(pages, filename)
 
     # --- actual_hours ---
-    actual_hours = _find_actual_hours_from_tables(all_tables)
+    actual_hours, hours_candidates = _find_actual_hours_from_tables(pages)
     if not actual_hours:
-        actual_hours = _find_actual_hours_from_text(all_text)
+        actual_hours, text_hours_candidates = _find_actual_hours_from_text(pages)
+        # テーブル候補とテキスト候補をマージ
+        hours_candidates = hours_candidates + text_hours_candidates
+        hours_candidates = sorted(hours_candidates, key=lambda c: c["confidence"], reverse=True)[:5]
 
     # --- travel_amount（PDFでは基本取れない、None固定） ---
     travel_amount = None
+
+    pdf.close()
 
     return {
         "billing_ym": billing_ym,
         "actual_hours": actual_hours,
         "travel_amount": travel_amount,
+        "candidates": {
+            "billing_ym": bym_candidates,
+            "actual_hours": hours_candidates,
+            "travel_amount": [],
+        },
     }
