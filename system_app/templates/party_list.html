@@ -2,84 +2,379 @@
 {% load humanize %}
 
 {% block content %}
-<div class="container mt-4">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2 class="mb-0">案件・契約管理</h2>
-        <a href="{% url 'contact_entity_create' %}" class="btn btn-success">+ 新規アサインメント登録</a>
+<style>
+    /* ── Card ── */
+    .asgn-card {
+        display: block;
+        background: var(--sf-card-bg);
+        border: 1px solid var(--sf-border);
+        border-left: 4px solid var(--sf-blue);
+        border-radius: var(--sf-radius);
+        padding: .9rem 1rem .75rem;
+        margin-bottom: .6rem;
+        text-decoration: none;
+        color: inherit;
+        box-shadow: var(--sf-shadow);
+        transition: box-shadow .15s, transform .1s;
+    }
+    .asgn-card:hover {
+        box-shadow: 0 4px 14px rgba(0,0,0,.1);
+        transform: translateY(-1px);
+        color: inherit;
+        text-decoration: none;
+    }
+    .asgn-card.inactive { border-left-color: #b0b0b0; opacity: .6; }
+    .asgn-card.ending-soon { border-left-color: var(--sf-warning); }
+
+    /* ── Row 1: Header ── */
+    .asgn-header {
+        display: flex;
+        align-items: center;
+        gap: .5rem;
+        flex-wrap: wrap;
+        margin-bottom: .55rem;
+    }
+    .asgn-name {
+        font-size: 1rem;
+        font-weight: 700;
+        color: var(--sf-text);
+    }
+    .asgn-badge {
+        font-size: .65rem;
+        font-weight: 600;
+        padding: .15em .5em;
+        border-radius: 3px;
+    }
+    .asgn-badge.type-fl { background: #e8f0fe; color: var(--sf-blue); }
+    .asgn-badge.type-bp { background: #fef3c7; color: #92400e; }
+    .asgn-badge.type-emp { background: #e6f4ea; color: var(--sf-success); }
+    .asgn-badge.ending { background: var(--sf-warning); color: #fff; }
+    .asgn-header .spacer { flex: 1; }
+
+    /* ── Row 2: Key facts ── */
+    .asgn-facts {
+        display: flex;
+        align-items: baseline;
+        gap: 1.2rem;
+        flex-wrap: wrap;
+        font-size: .8rem;
+        margin-bottom: .55rem;
+        padding-bottom: .55rem;
+        border-bottom: 1px solid var(--sf-border);
+    }
+    .asgn-fact {
+        display: flex;
+        align-items: baseline;
+        gap: .3rem;
+    }
+    .asgn-fl {
+        color: var(--sf-text-muted);
+        font-size: .72rem;
+        white-space: nowrap;
+    }
+    .asgn-fv {
+        font-weight: 600;
+        color: var(--sf-text);
+        white-space: nowrap;
+    }
+    .asgn-fv.price { font-size: .85rem; }
+    .asgn-fv .sub {
+        font-weight: 400;
+        font-size: .7rem;
+        color: var(--sf-text-muted);
+    }
+    .asgn-fv.dim { color: var(--sf-text-muted); font-weight: 400; }
+
+    /* ── Row 3: Upstream / Downstream pair ── */
+    .asgn-pair {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0;
+        font-size: .78rem;
+    }
+    @media (max-width: 640px) {
+        .asgn-pair { grid-template-columns: 1fr; }
+    }
+    .asgn-side {
+        display: flex;
+        align-items: baseline;
+        gap: .4rem;
+        padding: .25rem 0;
+    }
+    .asgn-side-label {
+        font-size: .65rem;
+        font-weight: 600;
+        letter-spacing: .04em;
+        padding: .1em .4em;
+        border-radius: 3px;
+        white-space: nowrap;
+        flex-shrink: 0;
+    }
+    .asgn-side-label.up { background: #e8f0fe; color: var(--sf-blue); }
+    .asgn-side-label.down { background: #fef3c7; color: #92400e; }
+    .asgn-side-company {
+        font-weight: 600;
+        color: var(--sf-text);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .asgn-side-contact {
+        color: var(--sf-text-muted);
+        font-size: .75rem;
+        white-space: nowrap;
+    }
+    .asgn-side .dim {
+        color: #c0bfbd;
+    }
+
+    /* ── Result count ── */
+    .result-count {
+        font-size: .8rem;
+        color: var(--sf-text-muted);
+        margin-bottom: .5rem;
+    }
+</style>
+
+<div class="container-fluid">
+    <!-- SF Page Header -->
+    <div class="sf-page-header">
+        <div class="sf-title-group">
+            <div class="sf-icon"><i class="bi bi-briefcase"></i></div>
+            <h2>契約管理</h2>
+        </div>
+        <a href="{% url 'contact_entity_create' %}" class="btn btn-sf-primary">
+            <i class="bi bi-plus-lg me-1"></i>新規契約登録
+        </a>
     </div>
 
-    <!-- 検索・フィルタ -->
-    <form method="get" class="row g-3 mb-4">
-        <div class="col-md-3">
-            <input type="text" name="search" class="form-control" placeholder="名前で検索" value="{{ search_name }}">
+    <!-- Filter Bar -->
+    <form method="get" class="sf-filter-bar">
+        <input type="text" name="search" class="form-control form-control-sm" style="max-width:200px" placeholder="名前で検索" value="{{ search_name }}">
+        <select name="worker_type" class="form-select form-select-sm" style="max-width:150px">
+            <option value="">-- 種別 --</option>
+            {% for wt in worker_types %}
+            <option value="{{ wt }}" {% if filter_type == wt %}selected{% endif %}>{{ wt }}</option>
+            {% endfor %}
+        </select>
+        <div class="form-check mb-0">
+            <input type="checkbox" name="show_inactive" value="1" class="form-check-input" id="showInactive" {% if show_inactive %}checked{% endif %}>
+            <label class="form-check-label" for="showInactive" style="font-size:.8rem">終了した案件も表示</label>
         </div>
-        <div class="col-md-2">
-            <select name="worker_type" class="form-select">
-                <option value="">-- 種別 --</option>
-                {% for wt in worker_types %}
-                <option value="{{ wt }}" {% if filter_type == wt %}selected{% endif %}>{{ wt }}</option>
-                {% endfor %}
-            </select>
-        </div>
-        <div class="col-md-3">
-            <div class="form-check mt-2">
-                <input type="checkbox" name="show_inactive" value="1" class="form-check-input" id="showInactive" {% if show_inactive %}checked{% endif %}>
-                <label class="form-check-label" for="showInactive">終了した案件も表示</label>
-            </div>
-        </div>
-        <div class="col-md-2">
-            <button type="submit" class="btn btn-primary w-100">検索</button>
-        </div>
-        <div class="col-md-2">
-            <a href="{% url 'party_list' %}" class="btn btn-outline-secondary w-100">クリア</a>
-        </div>
+        <button type="submit" class="btn btn-sf-primary btn-sm">
+            <i class="bi bi-search me-1"></i>検索
+        </button>
+        <a href="{% url 'party_list' %}" class="btn btn-sf-outline btn-sm">クリア</a>
     </form>
 
-    <table class="table table-striped table-hover">
-        <thead class="table-dark">
-            <tr>
-                <th>氏名</th>
-                <th>種別</th>
-                <th>営業担当</th>
-                <th>案件名</th>
-                <th>現行単価</th>
-                <th>稼働状況</th>
-                <th>発注期間終了</th>
-                <th></th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for row in rows %}
-            <tr>
-                <td>{{ row.name }}</td>
-                <td>{{ row.worker_type|default:"-" }}</td>
-                <td>{{ row.sales_owner|default:"-" }}</td>
-                <td>{{ row.project_name }}</td>
-                <td>
-                    {% if row.unit_price %}
-                    {{ row.unit_price|intcomma }}円
-                    {% else %}
-                    -
-                    {% endif %}
-                </td>
-                <td>
-                    {% if row.is_active %}
-                    <span class="badge bg-success">稼働中</span>
-                    {% else %}
-                    <span class="badge bg-secondary">停止</span>
-                    {% endif %}
-                </td>
-                <td>{{ row.order_period_end_ym|default:"-" }}</td>
-                <td>
-                    <a href="{% url 'assignment_detail' row.id %}" class="btn btn-sm btn-outline-primary">詳細</a>
-                </td>
-            </tr>
-            {% empty %}
-            <tr>
-                <td colspan="8" class="text-center text-muted">データがありません</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+    <div class="result-count">{{ rows|length }}件</div>
+
+    <!-- Card List -->
+    {% for row in rows %}
+    <a href="{% url 'assignment_detail' row.id %}"
+       class="asgn-card{% if not row.is_active %} inactive{% elif row.contract_ending_soon %} ending-soon{% endif %}">
+
+        <!-- Row 1: Name + Badges -->
+        <div class="asgn-header">
+            <span class="asgn-name">{{ row.name }}</span>
+            {% if row.worker_type and row.worker_type != "-" %}
+            <span class="asgn-badge{% if row.worker_type == 'BP' %} type-bp{% elif row.worker_type == '正社員' or row.worker_type == '契約社員' %} type-emp{% else %} type-fl{% endif %}">{{ row.worker_type }}</span>
+            {% endif %}
+            {% if row.contract_ending_soon %}
+            <span class="asgn-badge ending"><i class="bi bi-exclamation-triangle"></i> 契約終了間近</span>
+            {% endif %}
+            <span class="spacer"></span>
+            {% if row.is_active %}
+            <span class="sf-badge sf-badge-success">稼働中</span>
+            {% else %}
+            <span class="sf-badge sf-badge-neutral">停止</span>
+            {% endif %}
+        </div>
+
+        <!-- Row 2: Key facts -->
+        <div class="asgn-facts">
+            <div class="asgn-fact">
+                <span class="asgn-fl">案件</span>
+                <span class="asgn-fv">{{ row.project_name }}</span>
+            </div>
+            <div class="asgn-fact">
+                <span class="asgn-fl">単価</span>
+                {% if row.unit_price %}
+                <span class="asgn-fv price">{{ row.unit_price|intcomma }}円</span>
+                {% if row.is_fixed_fee %}
+                <span class="asgn-fv"><span class="sub">固定</span></span>
+                {% elif row.lower_limit and row.upper_limit %}
+                <span class="asgn-fv"><span class="sub">{{ row.lower_limit }}〜{{ row.upper_limit }}h</span></span>
+                {% endif %}
+                {% else %}
+                <span class="asgn-fv dim">―</span>
+                {% endif %}
+            </div>
+            <div class="asgn-fact">
+                <span class="asgn-fl">契約期間</span>
+                {% if row.contract_from or row.contract_to %}
+                <span class="asgn-fv contract-to-label" data-assignment-id="{{ row.id }}">{{ row.contract_from|date:"Y/m/d"|default:"?" }} 〜 <span class="contract-to-date">{{ row.contract_to|date:"Y/m/d"|default:"?" }}</span></span>
+                {% if row.contract_to %}
+                <span class="extend-wrap" onclick="event.stopPropagation();event.preventDefault();">
+                    <button type="button" class="extend-btn" data-assignment-id="{{ row.id }}">延長 ▾</button>
+                    <ul class="extend-menu">
+                        <li data-months="1">+1ヶ月</li>
+                        <li data-months="3">+3ヶ月</li>
+                        <li data-months="6">+6ヶ月</li>
+                    </ul>
+                </span>
+                {% endif %}
+                {% else %}
+                <span class="asgn-fv dim">―</span>
+                {% endif %}
+            </div>
+            <div class="asgn-fact">
+                <span class="asgn-fl">営業</span>
+                <span class="asgn-fv{% if row.sales_owner == '-' %} dim{% endif %}">{{ row.sales_owner }}</span>
+            </div>
+        </div>
+
+        <!-- Row 3: Upstream / Downstream pair -->
+        <div class="asgn-pair">
+            <div class="asgn-side">
+                <span class="asgn-side-label up">上位</span>
+                {% if row.upstream_name %}
+                <span class="asgn-side-company">{{ row.upstream_name }}</span>
+                {% if row.upstream_contact %}
+                <span class="asgn-side-contact">（{{ row.upstream_contact }}）</span>
+                {% endif %}
+                {% else %}
+                <span class="dim">―</span>
+                {% endif %}
+            </div>
+            <div class="asgn-side">
+                <span class="asgn-side-label down">下位</span>
+                {% if row.downstream_name %}
+                <span class="asgn-side-company">{{ row.downstream_name }}</span>
+                {% else %}
+                <span class="dim">―</span>
+                {% endif %}
+            </div>
+        </div>
+    </a>
+    {% empty %}
+    <div class="sf-section">
+        <div class="text-center py-4" style="color:var(--sf-text-muted)">データがありません</div>
+    </div>
+    {% endfor %}
 </div>
+
+<style>
+    /* ── Extend button ── */
+    .extend-wrap {
+        position: relative;
+        display: inline-block;
+        margin-left: .3rem;
+    }
+    .extend-btn {
+        font-size: .68rem;
+        padding: .1em .45em;
+        border: 1px solid var(--sf-border);
+        border-radius: 3px;
+        background: var(--sf-card-bg);
+        color: var(--sf-blue);
+        cursor: pointer;
+        white-space: nowrap;
+    }
+    .extend-btn:hover { background: var(--sf-blue); color: #fff; }
+    .extend-menu {
+        display: none;
+        position: absolute;
+        top: 100%;
+        left: 0;
+        z-index: 100;
+        list-style: none;
+        margin: 2px 0 0;
+        padding: .25rem 0;
+        background: #fff;
+        border: 1px solid var(--sf-border);
+        border-radius: 4px;
+        box-shadow: 0 4px 12px rgba(0,0,0,.12);
+        min-width: 90px;
+    }
+    .extend-menu li {
+        padding: .35rem .75rem;
+        font-size: .78rem;
+        cursor: pointer;
+        white-space: nowrap;
+    }
+    .extend-menu li:hover { background: var(--sf-blue); color: #fff; }
+    .extend-wrap.open .extend-menu { display: block; }
+</style>
+
+<script>
+(function() {
+    const csrfToken = '{{ csrf_token }}';
+
+    // Toggle dropdown
+    document.querySelectorAll('.extend-btn').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            e.preventDefault();
+            const wrap = this.closest('.extend-wrap');
+            // Close others
+            document.querySelectorAll('.extend-wrap.open').forEach(w => {
+                if (w !== wrap) w.classList.remove('open');
+            });
+            wrap.classList.toggle('open');
+        });
+    });
+
+    // Close on outside click
+    document.addEventListener('click', () => {
+        document.querySelectorAll('.extend-wrap.open').forEach(w => w.classList.remove('open'));
+    });
+
+    // Menu item click
+    document.querySelectorAll('.extend-menu li').forEach(item => {
+        item.addEventListener('click', function(e) {
+            e.stopPropagation();
+            e.preventDefault();
+            const months = parseInt(this.dataset.months);
+            const wrap = this.closest('.extend-wrap');
+            const card = this.closest('.asgn-card');
+            const assignmentId = wrap.querySelector('.extend-btn').dataset.assignmentId;
+
+            wrap.classList.remove('open');
+
+            fetch(`/assignment/${assignmentId}/extend/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken,
+                },
+                body: JSON.stringify({ months: months }),
+            })
+            .then(resp => resp.json().then(data => ({ ok: resp.ok, data })))
+            .then(({ ok, data }) => {
+                if (!ok) {
+                    alert(data.error || 'エラーが発生しました');
+                    return;
+                }
+                // Update the date text in the card
+                const dateSpan = card.querySelector('.contract-to-date');
+                if (dateSpan && data.new_valid_to) {
+                    const d = new Date(data.new_valid_to);
+                    const y = d.getFullYear();
+                    const m = String(d.getMonth() + 1).padStart(2, '0');
+                    const day = String(d.getDate()).padStart(2, '0');
+                    dateSpan.textContent = `${y}/${m}/${day}`;
+                }
+                // Brief visual feedback
+                const btn = wrap.querySelector('.extend-btn');
+                const orig = btn.textContent;
+                btn.textContent = '✓';
+                btn.style.color = 'var(--sf-success)';
+                setTimeout(() => { btn.textContent = orig; btn.style.color = ''; }, 1500);
+            })
+            .catch(() => alert('通信エラーが発生しました'));
+        });
+    });
+})();
+</script>
 {% endblock %}

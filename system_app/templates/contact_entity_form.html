@@ -1,17 +1,32 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="container mt-4">
-    <h2 class="mb-4">新規人材登録</h2>
+<div class="container-fluid">
+    <!-- SF Page Header -->
+    <div class="sf-page-header">
+        <div class="sf-title-group">
+            <div class="sf-icon"><i class="bi bi-plus-lg"></i></div>
+            <h2>新規人材登録</h2>
+        </div>
+    </div>
 
     <form method="post">
         {% csrf_token %}
 
         <!-- 人材情報 -->
-        <div class="card mb-4 border-0 shadow-sm">
-            <div class="card-header" style="background-color: #4a6fa5; color: white;">人材情報</div>
-            <div class="card-body">
-                <div class="row">
+        <div class="sf-fieldset">
+            <div class="sf-fieldset-header">
+                <i class="bi bi-person" style="color:var(--sf-blue)"></i> 人材情報
+            </div>
+            <div class="sf-fieldset-body">
+                <div class="mb-3">
+                    <label class="form-label">既存の人材から選択</label>
+                    <select id="existing-worker-select">
+                        <option value="">-- 新規作成 --</option>
+                    </select>
+                    <input type="hidden" name="existing_worker_id" id="existing_worker_id">
+                </div>
+                <div id="worker-fields" class="row">
                     <div class="col-md-6 mb-3">
                         <label class="form-label">氏名 <span class="text-danger">*</span></label>
                         {{ form.name }}
@@ -33,9 +48,11 @@
         </div>
 
         <!-- 案件情報 -->
-        <div class="card mb-4 border-0 shadow-sm">
-            <div class="card-header" style="background-color: #5a8f7b; color: white;">案件情報</div>
-            <div class="card-body">
+        <div class="sf-fieldset">
+            <div class="sf-fieldset-header">
+                <i class="bi bi-folder" style="color:var(--sf-success)"></i> 案件情報
+            </div>
+            <div class="sf-fieldset-body">
                 <div class="row">
                     <div class="col-md-6 mb-3">
                         <label class="form-label">営業担当</label>
@@ -44,14 +61,6 @@
                     <div class="col-md-6 mb-3">
                         <label class="form-label">案件名</label>
                         {{ form.project_name }}
-                    </div>
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label">発注期間開始</label>
-                        {{ form.order_period_start_ym }}
-                    </div>
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label">発注期間終了</label>
-                        {{ form.order_period_end_ym }}
                     </div>
                     <div class="col-12 mb-3">
                         <label class="form-label">備考</label>
@@ -68,9 +77,11 @@
         </div>
 
         <!-- 上位契約情報 -->
-        <div class="card mb-4 border-0 shadow-sm">
-            <div class="card-header" style="background-color: #c9a45c; color: white;">上位契約情報</div>
-            <div class="card-body">
+        <div class="sf-fieldset">
+            <div class="sf-fieldset-header">
+                <i class="bi bi-file-earmark-text" style="color:#c9a45c"></i> 上位契約情報
+            </div>
+            <div class="sf-fieldset-body">
                 <div class="row">
                     <div class="col-md-4 mb-3">
                         <label class="form-label">単価（円） <span class="text-danger">*</span></label>
@@ -96,7 +107,6 @@
                             <label class="form-check-label" for="id_travel_expense_included">交通費込み</label>
                         </div>
                     </div>
-                    <!-- 精算関連（固定報酬時は非表示） -->
                     <div id="settlement-fields">
                         <div class="row">
                             <div class="col-md-3 mb-3">
@@ -142,9 +152,11 @@
         </div>
 
         <!-- 下位契約情報 -->
-        <div class="card mb-4 border-0 shadow-sm">
-            <div class="card-header" style="background-color: #d4816b; color: white;">下位契約情報</div>
-            <div class="card-body">
+        <div class="sf-fieldset">
+            <div class="sf-fieldset-header">
+                <i class="bi bi-file-earmark-text" style="color:#d4816b"></i> 下位契約情報
+            </div>
+            <div class="sf-fieldset-body">
                 <div class="row">
                     <div class="col-md-4 mb-3">
                         <label class="form-label">下位単価（円）</label>
@@ -157,7 +169,6 @@
                         </div>
                     </div>
                     <div class="col-md-4 mb-3"></div>
-                    <!-- 下位精算関連（下位固定報酬時は非表示） -->
                     <div id="downstream-settlement-fields">
                         <div class="row">
                             <div class="col-md-3 mb-3">
@@ -203,10 +214,19 @@
         </div>
 
         <!-- 上位（発注元） -->
-        <div class="card mb-4 border-0 shadow-sm">
-            <div class="card-header" style="background-color: #7a8b99; color: white;">上位（発注元）</div>
-            <div class="card-body">
-                <div class="row">
+        <div class="sf-fieldset">
+            <div class="sf-fieldset-header">
+                <i class="bi bi-building" style="color:#7a8b99"></i> 上位（発注元）
+            </div>
+            <div class="sf-fieldset-body">
+                <div class="mb-3">
+                    <label class="form-label">既存の会社から選択</label>
+                    <select id="existing-upstream-select">
+                        <option value="">-- 新規作成 --</option>
+                    </select>
+                    <input type="hidden" name="existing_upstream_id" id="existing_upstream_id">
+                </div>
+                <div id="upstream-company-fields" class="row">
                     <div class="col-md-4 mb-3">
                         <label class="form-label">会社名</label>
                         {{ form.upstream_company_name }}
@@ -224,7 +244,16 @@
                         <label class="form-label">送付先住所</label>
                         {{ form.upstream_mailing_address }}
                     </div>
-                    <hr>
+                </div>
+                <hr style="border-color:var(--sf-border)">
+                <div id="upstream-contact-select-wrapper" class="mb-3" style="display:none">
+                    <label class="form-label">既存の担当者から選択</label>
+                    <select id="existing-upstream-contact-select">
+                        <option value="">-- 新規作成 --</option>
+                    </select>
+                    <input type="hidden" name="existing_upstream_contact_id" id="existing_upstream_contact_id">
+                </div>
+                <div id="upstream-contact-fields" class="row">
                     <div class="col-md-4 mb-3">
                         <label class="form-label">担当者名</label>
                         {{ form.upstream_contact_name }}
@@ -242,17 +271,26 @@
                     <div class="col-12 mb-2">
                         <label class="form-label">担当者メール</label>
                         <div id="upstream-emails"></div>
-                        <button type="button" class="btn btn-sm btn-outline-primary mt-1" onclick="addEmailRow('upstream')">+ メール追加</button>
+                        <button type="button" class="btn btn-sf-outline btn-sm mt-1" onclick="addEmailRow('upstream')">+ メール追加</button>
                     </div>
                 </div>
             </div>
         </div>
 
         <!-- 下位（発注先） -->
-        <div class="card mb-4 border-0 shadow-sm">
-            <div class="card-header" style="background-color: #8b7a6b; color: white;">下位（発注先）</div>
-            <div class="card-body">
-                <div class="row">
+        <div class="sf-fieldset">
+            <div class="sf-fieldset-header">
+                <i class="bi bi-truck" style="color:#8b7a6b"></i> 下位（発注先）
+            </div>
+            <div class="sf-fieldset-body">
+                <div class="mb-3">
+                    <label class="form-label">既存の会社から選択</label>
+                    <select id="existing-downstream-select">
+                        <option value="">-- 新規作成 --</option>
+                    </select>
+                    <input type="hidden" name="existing_downstream_id" id="existing_downstream_id">
+                </div>
+                <div id="downstream-company-fields" class="row">
                     <div class="col-md-4 mb-3">
                         <label class="form-label">会社名</label>
                         {{ form.downstream_company_name }}
@@ -275,7 +313,16 @@
                         <label class="form-label">送付先住所</label>
                         {{ form.downstream_mailing_address }}
                     </div>
-                    <hr>
+                </div>
+                <hr style="border-color:var(--sf-border)">
+                <div id="downstream-contact-select-wrapper" class="mb-3" style="display:none">
+                    <label class="form-label">既存の担当者から選択</label>
+                    <select id="existing-downstream-contact-select">
+                        <option value="">-- 新規作成 --</option>
+                    </select>
+                    <input type="hidden" name="existing_downstream_contact_id" id="existing_downstream_contact_id">
+                </div>
+                <div id="downstream-contact-fields" class="row">
                     <div class="col-md-4 mb-3">
                         <label class="form-label">担当者名</label>
                         {{ form.downstream_contact_name }}
@@ -293,23 +340,23 @@
                     <div class="col-12 mb-2">
                         <label class="form-label">担当者メール</label>
                         <div id="downstream-emails"></div>
-                        <button type="button" class="btn btn-sm btn-outline-primary mt-1" onclick="addEmailRow('downstream')">+ メール追加</button>
+                        <button type="button" class="btn btn-sf-outline btn-sm mt-1" onclick="addEmailRow('downstream')">+ メール追加</button>
                     </div>
                 </div>
             </div>
         </div>
 
-        <div class="d-flex gap-2">
-            <button type="submit" class="btn btn-success btn-lg">登録</button>
-            <a href="{% url 'party_list' %}" class="btn btn-outline-secondary btn-lg">キャンセル</a>
+        <div class="d-flex gap-2 mb-3">
+            <button type="submit" class="btn btn-sf-primary btn-lg">登録</button>
+            <a href="{% url 'party_list' %}" class="btn btn-sf-outline btn-lg">キャンセル</a>
         </div>
     </form>
 </div>
 
 <script>
+/* ── Email rows ── */
 function addEmailRow(prefix, email, desc) {
     const container = document.getElementById(prefix + '-emails');
-    const idx = container.children.length;
     const row = document.createElement('div');
     row.className = 'row mb-2 align-items-center';
     row.innerHTML = `
@@ -326,8 +373,58 @@ function addEmailRow(prefix, email, desc) {
     container.appendChild(row);
 }
 
-document.addEventListener('DOMContentLoaded', function() {
-    // 固定報酬トグル
+/* ── Helper: set field value ── */
+function setField(id, value) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (el.type === 'checkbox') {
+        el.checked = !!value;
+    } else {
+        el.value = value || '';
+    }
+}
+
+/* ── Helper: toggle readonly on fields in a container ── */
+function setFieldsReadonly(containerId, readonly) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    container.querySelectorAll('input, select, textarea').forEach(el => {
+        if (readonly) {
+            el.setAttribute('readonly', 'readonly');
+            if (el.tagName === 'SELECT') el.setAttribute('disabled', 'disabled');
+            if (el.type === 'checkbox') el.setAttribute('disabled', 'disabled');
+        } else {
+            el.removeAttribute('readonly');
+            el.removeAttribute('disabled');
+        }
+    });
+}
+
+/* ── Helper: clear fields in a container ── */
+function clearFields(containerId) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    container.querySelectorAll('input, select, textarea').forEach(el => {
+        if (el.type === 'checkbox') {
+            el.checked = false;
+        } else if (el.tagName === 'SELECT') {
+            el.selectedIndex = 0;
+        } else {
+            el.value = '';
+        }
+    });
+}
+
+/* ── Data caches ── */
+let personData = [];
+let companyData = [];
+
+/* ── Tom Select instances ── */
+let tsWorker, tsUpstream, tsDownstream;
+let tsUpstreamContact, tsDownstreamContact;
+
+document.addEventListener('DOMContentLoaded', async function() {
+    // Fixed fee toggles
     const fixedFeeCheckbox = document.getElementById('id_is_fixed_fee');
     const settlementFields = document.getElementById('settlement-fields');
     function toggleSettlementFields() {
@@ -336,7 +433,6 @@ document.addEventListener('DOMContentLoaded', function() {
     toggleSettlementFields();
     fixedFeeCheckbox.addEventListener('change', toggleSettlementFields);
 
-    // 下位固定報酬トグル
     const dsFixedFeeCheckbox = document.getElementById('id_downstream_is_fixed_fee');
     const dsSettlementFields = document.getElementById('downstream-settlement-fields');
     function toggleDsSettlementFields() {
@@ -345,13 +441,200 @@ document.addEventListener('DOMContentLoaded', function() {
     toggleDsSettlementFields();
     dsFixedFeeCheckbox.addEventListener('change', toggleDsSettlementFields);
 
-    // 新規登録：空の1行を追加
+    // Default email rows
     if (document.getElementById('upstream-emails').children.length === 0) {
         addEmailRow('upstream');
     }
     if (document.getElementById('downstream-emails').children.length === 0) {
         addEmailRow('downstream');
     }
+
+    // Fetch data
+    try {
+        const [personRes, companyRes] = await Promise.all([
+            fetch('{% url "contact_entity_search" %}?kind=PERSON'),
+            fetch('{% url "contact_entity_search" %}?kind=COMPANY'),
+        ]);
+        personData = await personRes.json();
+        companyData = await companyRes.json();
+    } catch (e) {
+        console.error('Failed to load contact entities:', e);
+        return;
+    }
+
+    // ── Worker select ──
+    tsWorker = new TomSelect('#existing-worker-select', {
+        options: personData.map(p => {
+            let label = p.name;
+            const parts = [p.worker_type, p.email].filter(Boolean);
+            if (parts.length) label += ' (' + parts.join(' / ') + ')';
+            return { value: String(p.id), text: label };
+        }),
+        placeholder: '選択または新規入力...',
+        allowEmptyOption: true,
+        onChange: function(value) {
+            document.getElementById('existing_worker_id').value = value;
+            if (value) {
+                const person = personData.find(p => String(p.id) === value);
+                if (person) {
+                    setField('id_name', person.name);
+                    setField('id_worker_type', person.worker_type);
+                    setField('id_email', person.email);
+                    setField('id_phone', person.phone);
+                    setFieldsReadonly('worker-fields', true);
+                }
+            } else {
+                clearFields('worker-fields');
+                setFieldsReadonly('worker-fields', false);
+            }
+        }
+    });
+
+    // ── Upstream company select ──
+    tsUpstream = new TomSelect('#existing-upstream-select', {
+        options: companyData.map(c => {
+            let label = c.name;
+            const addr = c.address ? c.address.substring(0, 20) : '';
+            if (addr) label += ' (' + addr + ')';
+            return { value: String(c.id), text: label };
+        }),
+        placeholder: '選択または新規入力...',
+        allowEmptyOption: true,
+        onChange: function(value) {
+            document.getElementById('existing_upstream_id').value = value;
+            if (value) {
+                const company = companyData.find(c => String(c.id) === value);
+                if (company) {
+                    setField('id_upstream_company_name', company.name);
+                    setField('id_upstream_company_phone', company.company_phone);
+                    setField('id_upstream_address', company.address);
+                    setField('id_upstream_mailing_address', company.mailing_address);
+                    setFieldsReadonly('upstream-company-fields', true);
+                    // Show contact person select if there are contacts
+                    setupContactSelect('upstream', company.contact_people);
+                }
+            } else {
+                clearFields('upstream-company-fields');
+                setFieldsReadonly('upstream-company-fields', false);
+                hideContactSelect('upstream');
+                clearFields('upstream-contact-fields');
+                setFieldsReadonly('upstream-contact-fields', false);
+                // Reset email rows
+                document.getElementById('upstream-emails').innerHTML = '';
+                addEmailRow('upstream');
+            }
+        }
+    });
+
+    // ── Downstream company select ──
+    tsDownstream = new TomSelect('#existing-downstream-select', {
+        options: companyData.map(c => {
+            let label = c.name;
+            const addr = c.address ? c.address.substring(0, 20) : '';
+            if (addr) label += ' (' + addr + ')';
+            return { value: String(c.id), text: label };
+        }),
+        placeholder: '選択または新規入力...',
+        allowEmptyOption: true,
+        onChange: function(value) {
+            document.getElementById('existing_downstream_id').value = value;
+            if (value) {
+                const company = companyData.find(c => String(c.id) === value);
+                if (company) {
+                    setField('id_downstream_company_name', company.name);
+                    setField('id_downstream_company_phone', company.company_phone);
+                    setField('id_downstream_address', company.address);
+                    setField('id_downstream_mailing_address', company.mailing_address);
+                    setField('id_downstream_has_invoice_registration', company.has_invoice_registration);
+                    setFieldsReadonly('downstream-company-fields', true);
+                    setupContactSelect('downstream', company.contact_people);
+                }
+            } else {
+                clearFields('downstream-company-fields');
+                setFieldsReadonly('downstream-company-fields', false);
+                hideContactSelect('downstream');
+                clearFields('downstream-contact-fields');
+                setFieldsReadonly('downstream-contact-fields', false);
+                document.getElementById('downstream-emails').innerHTML = '';
+                addEmailRow('downstream');
+            }
+        }
+    });
 });
+
+/* ── Contact person select setup ── */
+function setupContactSelect(prefix, contactPeople) {
+    const wrapper = document.getElementById(prefix + '-contact-select-wrapper');
+    const hiddenField = document.getElementById('existing_' + prefix + '_contact_id');
+    const selectEl = document.getElementById('existing-' + prefix + '-contact-select');
+
+    // Destroy previous TomSelect instance if exists
+    const tsVarName = prefix === 'upstream' ? 'tsUpstreamContact' : 'tsDownstreamContact';
+    if (window[tsVarName]) {
+        window[tsVarName].destroy();
+        window[tsVarName] = null;
+    }
+
+    if (contactPeople && contactPeople.length > 0) {
+        wrapper.style.display = 'block';
+        // Reset the native select
+        selectEl.innerHTML = '<option value="">-- 新規作成 --</option>';
+
+        const ts = new TomSelect(selectEl, {
+            options: contactPeople.map(cp => ({
+                value: String(cp.id),
+                text: cp.name + (cp.phone ? ` (${cp.phone})` : '')
+            })),
+            placeholder: '担当者を選択...',
+            allowEmptyOption: true,
+            onChange: function(value) {
+                hiddenField.value = value;
+                if (value) {
+                    const cp = contactPeople.find(c => String(c.id) === value);
+                    if (cp) {
+                        setField('id_' + prefix + '_contact_name', cp.name);
+                        setField('id_' + prefix + '_contact_phone', cp.phone);
+                        setField('id_' + prefix + '_line_available', cp.line_available);
+                        setFieldsReadonly(prefix + '-contact-fields', true);
+                        // Fill emails
+                        const emailContainer = document.getElementById(prefix + '-emails');
+                        emailContainer.innerHTML = '';
+                        if (cp.emails && cp.emails.length > 0) {
+                            cp.emails.forEach(e => addEmailRow(prefix, e.email, e.description));
+                        } else {
+                            addEmailRow(prefix);
+                        }
+                        // Make email fields readonly too
+                        emailContainer.querySelectorAll('input, button').forEach(el => {
+                            if (el.tagName === 'BUTTON') el.style.display = 'none';
+                            else el.setAttribute('readonly', 'readonly');
+                        });
+                    }
+                } else {
+                    clearFields(prefix + '-contact-fields');
+                    setFieldsReadonly(prefix + '-contact-fields', false);
+                    document.getElementById(prefix + '-emails').innerHTML = '';
+                    addEmailRow(prefix);
+                }
+            }
+        });
+        window[tsVarName] = ts;
+    } else {
+        wrapper.style.display = 'none';
+        hiddenField.value = '';
+    }
+}
+
+function hideContactSelect(prefix) {
+    const wrapper = document.getElementById(prefix + '-contact-select-wrapper');
+    const hiddenField = document.getElementById('existing_' + prefix + '_contact_id');
+    const tsVarName = prefix === 'upstream' ? 'tsUpstreamContact' : 'tsDownstreamContact';
+    if (window[tsVarName]) {
+        window[tsVarName].destroy();
+        window[tsVarName] = null;
+    }
+    wrapper.style.display = 'none';
+    hiddenField.value = '';
+}
 </script>
 {% endblock %}

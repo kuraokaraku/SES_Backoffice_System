@@ -1,0 +1,464 @@
+{% extends "base.html" %}
+{% load l10n %}
+{% block title %}ダッシュボード{% endblock %}
+{% block content %}
+
+<style>
+    /* ── Page header ── */
+    .dash-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: .75rem;
+        padding: .75rem 0 1.25rem;
+    }
+    .dash-header .title-group {
+        display: flex;
+        align-items: center;
+        gap: .75rem;
+    }
+    .dash-header .dash-icon {
+        width: 40px; height: 40px;
+        border-radius: 8px;
+        background: var(--sf-blue);
+        color: #fff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.15rem;
+        flex-shrink: 0;
+    }
+    .dash-header h2 {
+        font-size: 1.25rem;
+        font-weight: 700;
+        margin: 0;
+        color: var(--sf-text);
+    }
+    .dash-header .month-sub {
+        font-size: .8rem;
+        color: var(--sf-text-muted);
+    }
+    .dash-header .month-nav .btn {
+        border-color: var(--sf-border);
+        color: var(--sf-text-muted);
+        font-size: .8rem;
+        border-radius: var(--sf-radius);
+        padding: .25rem .6rem;
+    }
+    .dash-header .month-nav .btn:hover {
+        background: var(--sf-card-bg);
+        color: var(--sf-text);
+    }
+
+    /* ── P&L Compact Bar ── */
+    .pl-bar {
+        background: var(--sf-card-bg);
+        border: 1px solid var(--sf-border);
+        border-radius: var(--sf-radius);
+        padding: 1rem 1.5rem;
+        box-shadow: var(--sf-shadow);
+        margin-bottom: 1.25rem;
+        display: inline-flex;
+        align-items: center;
+        gap: 1.5rem;
+        flex-wrap: wrap;
+    }
+    .pl-bar .pl-item {
+        display: flex;
+        align-items: center;
+        gap: .5rem;
+        text-decoration: none;
+        color: inherit;
+        white-space: nowrap;
+    }
+    .pl-bar .pl-item:hover { opacity: .8; }
+    .pl-bar .pl-item .pl-icon {
+        font-size: .85rem;
+    }
+    .pl-bar .pl-item .pl-label {
+        font-size: .75rem;
+        font-weight: 600;
+        color: var(--sf-text-muted);
+    }
+    .pl-bar .pl-item .pl-amount {
+        font-size: 1.7rem;
+        font-weight: 700;
+        line-height: 1.2;
+    }
+    .pl-bar .pl-item.revenue .pl-icon,
+    .pl-bar .pl-item.revenue .pl-amount { color: var(--sf-blue); }
+    .pl-bar .pl-item.cost .pl-icon,
+    .pl-bar .pl-item.cost .pl-amount { color: #b45309; }
+    .pl-bar .pl-item.profit .pl-icon { color: var(--sf-success); }
+    .pl-bar .pl-item.profit .pl-amount.positive { color: var(--sf-success); }
+    .pl-bar .pl-item.profit .pl-amount.negative { color: var(--sf-error); }
+    .pl-bar .pl-item.profit .pl-icon.negative { color: var(--sf-error); }
+    .pl-bar .pl-sep {
+        width: 1px;
+        height: 2rem;
+        background: var(--sf-border);
+        flex-shrink: 0;
+    }
+
+    /* ── Main 2-column layout ── */
+    .dash-main {
+        display: grid;
+        grid-template-columns: 3fr 2fr;
+        gap: 1.25rem;
+        align-items: start;
+    }
+
+    /* ── Chart section ── */
+    .chart-section {
+        background: var(--sf-card-bg);
+        border: 1px solid var(--sf-border);
+        border-radius: var(--sf-radius);
+        padding: 1.25rem;
+        box-shadow: var(--sf-shadow);
+        position: sticky;
+        top: 1rem;
+    }
+    .chart-section h3 {
+        font-size: .9rem;
+        font-weight: 600;
+        color: var(--sf-text);
+        margin: 0 0 1rem;
+    }
+
+    /* ── KPI grid ── */
+    .kpi-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 1rem;
+        align-items: start;
+    }
+
+    /* ── KPI card ── */
+    .kpi-card {
+        display: flex;
+        align-items: flex-start;
+        gap: .75rem;
+        background: var(--sf-card-bg);
+        border: 1px solid var(--sf-border);
+        border-radius: var(--sf-radius);
+        padding: 1rem;
+        text-decoration: none;
+        color: inherit;
+        box-shadow: var(--sf-shadow);
+        transition: box-shadow .15s, transform .1s;
+    }
+    .kpi-card:hover {
+        box-shadow: 0 4px 12px rgba(0,0,0,.1);
+        transform: translateY(-1px);
+        color: inherit;
+        text-decoration: none;
+    }
+    .kpi-card.muted { opacity: .45; }
+    .kpi-card.muted:hover { opacity: .6; }
+
+    /* ── KPI icon ── */
+    .kpi-icon {
+        width: 36px; height: 36px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: .9rem;
+        flex-shrink: 0;
+    }
+    .kpi-icon.icon-default { background: #e8f4fd; color: var(--sf-blue); }
+    .kpi-icon.icon-warning { background: #fff3e0; color: var(--sf-warning); }
+    .kpi-icon.icon-danger { background: #fde8e8; color: var(--sf-error); }
+
+    /* ── KPI text ── */
+    .kpi-body { flex: 1; min-width: 0; }
+    .kpi-label {
+        font-size: .7rem;
+        font-weight: 600;
+        color: var(--sf-text-muted);
+        letter-spacing: .03em;
+        margin-bottom: .25rem;
+    }
+    .kpi-value {
+        font-size: 1.75rem;
+        font-weight: 700;
+        line-height: 1;
+        margin-bottom: .2rem;
+        color: var(--sf-text);
+    }
+    .kpi-value .unit {
+        font-size: .75rem;
+        font-weight: 400;
+        color: var(--sf-text-muted);
+    }
+    .kpi-sub {
+        font-size: .7rem;
+        color: var(--sf-text-muted);
+    }
+    .kpi-card.danger .kpi-value { color: var(--sf-error); }
+    .kpi-card.warning .kpi-value { color: #b45309; }
+
+    @media (max-width: 768px) {
+        .pl-bar { flex-direction: column; align-items: flex-start; gap: .5rem; }
+        .pl-bar .pl-sep { width: 100%; height: 1px; }
+        .dash-main { grid-template-columns: 1fr; }
+        .chart-section { position: static; }
+        .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (max-width: 480px) {
+        .kpi-grid { grid-template-columns: 1fr; }
+    }
+</style>
+
+<div class="container-fluid" style="max-width:1100px">
+    <!-- Header with month navigation -->
+    <div class="dash-header">
+        <div class="title-group">
+            <div class="dash-icon"><i class="bi bi-grid-1x2"></i></div>
+            <div>
+                <h2>{{ year }}年{{ month }}月</h2>
+                <div class="month-sub">ダッシュボード</div>
+            </div>
+        </div>
+        <div class="month-nav d-flex gap-2">
+            <a href="?ym={{ prev_ym }}" class="btn btn-sm">&larr; 前月</a>
+            <a href="?ym={{ next_ym }}" class="btn btn-sm">翌月 &rarr;</a>
+        </div>
+    </div>
+
+    <!-- ═══ (A) P&L Compact Bar ═══ -->
+    <div class="pl-bar">
+        <a href="{% url 'invoice_list' %}?ym={{ ym }}" class="pl-item revenue">
+            <i class="bi bi-arrow-up-circle-fill pl-icon"></i>
+            <span class="pl-label">売上</span>
+            <span class="pl-amount">¥{{ monthly_revenue|floatformat:0 }}</span>
+        </a>
+        <div class="pl-sep"></div>
+        <a href="{% url 'ap_list' %}?ym={{ ym }}" class="pl-item cost">
+            <i class="bi bi-arrow-down-circle-fill pl-icon"></i>
+            <span class="pl-label">支払</span>
+            <span class="pl-amount">¥{{ monthly_cost|floatformat:0 }}</span>
+        </a>
+        <div class="pl-sep"></div>
+        <div class="pl-item profit">
+            <i class="bi bi-graph-up-arrow pl-icon{% if monthly_gross_profit < 0 %} negative{% endif %}"></i>
+            <span class="pl-label">粗利</span>
+            <span class="pl-amount {% if monthly_gross_profit >= 0 %}positive{% else %}negative{% endif %}">¥{{ monthly_gross_profit|floatformat:0 }}</span>
+            <span class="pl-label" style="margin-left:.25rem">({{ monthly_gross_profit_rate }}%)</span>
+        </div>
+    </div>
+
+    <!-- ═══ (B) KPI + Chart 2-column ═══ -->
+    <div class="dash-main">
+
+    <!-- Left: KPI Grid -->
+    <div class="kpi-grid">
+
+        <!-- (1) 勤務表：未回収 -->
+        <a href="{% url 'timesheet_dashboard' %}?ym={{ ym }}"
+           class="kpi-card{% if ts_pending_count == 0 %} muted{% elif ts_pending_count > 0 %} warning{% endif %}">
+            <div class="kpi-icon{% if ts_pending_count > 0 %} icon-warning{% else %} icon-default{% endif %}">
+                <i class="bi bi-file-earmark-spreadsheet"></i>
+            </div>
+            <div class="kpi-body">
+                <div class="kpi-label">勤務表：未回収</div>
+                <div class="kpi-value">{{ ts_pending_count }}<span class="unit">件</span></div>
+                <div class="kpi-sub">{{ month }}月分</div>
+            </div>
+        </a>
+
+        <!-- (2) 請求：未送付 -->
+        <a href="{% url 'invoice_list' %}?ym={{ ym }}"
+           class="kpi-card{% if inv_unsent_count == 0 %} muted{% elif inv_unsent_count > 0 %} warning{% endif %}">
+            <div class="kpi-icon{% if inv_unsent_count > 0 %} icon-warning{% else %} icon-default{% endif %}">
+                <i class="bi bi-envelope"></i>
+            </div>
+            <div class="kpi-body">
+                <div class="kpi-label">請求：未送付</div>
+                <div class="kpi-value">{{ inv_unsent_count }}<span class="unit">件</span></div>
+                <div class="kpi-sub">{{ month }}月分</div>
+            </div>
+        </a>
+
+        <!-- (3) 請求：入金待ち -->
+        <a href="{% url 'invoice_list' %}?ym={{ ym }}"
+           class="kpi-card{% if inv_sent_count == 0 %} muted{% elif inv_sent_count > 0 %} warning{% endif %}">
+            <div class="kpi-icon{% if inv_sent_count > 0 %} icon-warning{% else %} icon-default{% endif %}">
+                <i class="bi bi-hourglass-split"></i>
+            </div>
+            <div class="kpi-body">
+                <div class="kpi-label">請求：入金待ち</div>
+                <div class="kpi-value">{{ inv_sent_count }}<span class="unit">件</span></div>
+                <div class="kpi-sub">{{ month }}月分（送付済）</div>
+            </div>
+        </a>
+
+        <!-- (3b) 入金：未入金 -->
+        <a href="{% url 'ar_list' %}?ym={{ ym }}&status=unpaid"
+           class="kpi-card{% if ar_unpaid_count == 0 %} muted{% elif ar_unpaid_count > 0 %} danger{% endif %}">
+            <div class="kpi-icon{% if ar_unpaid_count > 0 %} icon-danger{% else %} icon-default{% endif %}">
+                <i class="bi bi-cash-coin"></i>
+            </div>
+            <div class="kpi-body">
+                <div class="kpi-label">入金：未入金</div>
+                <div class="kpi-value">{{ ar_unpaid_count }}<span class="unit">件</span></div>
+                <div class="kpi-sub">{{ month }}月支払期日分</div>
+            </div>
+        </a>
+
+        <!-- (4) 契約：30日以内に終了 -->
+        <a href="{% url 'party_list' %}"
+           class="kpi-card{% if contracts_end_30 == 0 %} muted{% elif contracts_end_30 > 0 %} danger{% endif %}">
+            <div class="kpi-icon{% if contracts_end_30 > 0 %} icon-danger{% else %} icon-default{% endif %}">
+                <i class="bi bi-exclamation-triangle"></i>
+            </div>
+            <div class="kpi-body">
+                <div class="kpi-label">契約：30日以内に終了</div>
+                <div class="kpi-value">{{ contracts_end_30 }}<span class="unit">件</span></div>
+                <div class="kpi-sub">要対応</div>
+            </div>
+        </a>
+
+        <!-- (5) 契約：60日以内に終了 -->
+        <a href="{% url 'party_list' %}"
+           class="kpi-card{% if contracts_end_60 == 0 %} muted{% elif contracts_end_60 > 0 %} warning{% endif %}">
+            <div class="kpi-icon{% if contracts_end_60 > 0 %} icon-warning{% else %} icon-default{% endif %}">
+                <i class="bi bi-calendar-event"></i>
+            </div>
+            <div class="kpi-body">
+                <div class="kpi-label">契約：60日以内に終了</div>
+                <div class="kpi-value">{{ contracts_end_60 }}<span class="unit">件</span></div>
+                <div class="kpi-sub">早めに確認</div>
+            </div>
+        </a>
+
+        <!-- (6) 営業：停滞商談 -->
+        <a href="{% url 'sales_board' %}?stagnant_only=1"
+           class="kpi-card{% if sales_stagnant_count == 0 %} muted{% elif sales_stagnant_count > 0 %} danger{% endif %}">
+            <div class="kpi-icon{% if sales_stagnant_count > 0 %} icon-danger{% else %} icon-default{% endif %}">
+                <i class="bi bi-clock-history"></i>
+            </div>
+            <div class="kpi-body">
+                <div class="kpi-label">営業：停滞商談</div>
+                <div class="kpi-value">{{ sales_stagnant_count }}<span class="unit">件</span></div>
+                <div class="kpi-sub">7日以上アクションなし</div>
+            </div>
+        </a>
+
+        <!-- (7) 支払：未支払 -->
+        <a href="{% url 'ap_list' %}?ym={{ ym }}&status=unpaid"
+           class="kpi-card{% if ap_unpaid_count == 0 %} muted{% elif ap_unpaid_count > 0 %} danger{% endif %}">
+            <div class="kpi-icon{% if ap_unpaid_count > 0 %} icon-danger{% else %} icon-default{% endif %}">
+                <i class="bi bi-wallet2"></i>
+            </div>
+            <div class="kpi-body">
+                <div class="kpi-label">支払：未支払</div>
+                <div class="kpi-value">{{ ap_unpaid_count }}<span class="unit">件</span></div>
+                <div class="kpi-sub">{{ month }}月支払期日分</div>
+            </div>
+        </a>
+
+    </div>
+
+    <!-- Right: Chart -->
+    <div class="chart-section">
+        <h3><i class="bi bi-bar-chart-line"></i> キャッシュフロー推移（6ヶ月）</h3>
+        <canvas id="cfChart"></canvas>
+    </div>
+
+    </div><!-- /dash-main -->
+</div>
+
+<!-- Chart.js 4.x (CDN) -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<script>
+(function() {
+    const raw = {{ trend_data_json|safe }};
+    const labels = raw.map(d => d.label);
+    const revenues = raw.map(d => d.revenue);
+    const costs = raw.map(d => d.cost);
+    const profits = raw.map(d => d.profit);
+
+    function fmtMan(val) {
+        return '¥' + (val / 10000).toLocaleString(undefined, {maximumFractionDigits: 0}) + '万';
+    }
+    function fmtFull(val) {
+        return '¥' + val.toLocaleString();
+    }
+
+    const ctx = document.getElementById('cfChart').getContext('2d');
+    new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [
+                {
+                    label: '売上',
+                    data: revenues,
+                    backgroundColor: 'rgba(1,118,211,0.7)',
+                    borderColor: 'rgba(1,118,211,1)',
+                    borderWidth: 1,
+                    borderRadius: 3,
+                    order: 2,
+                },
+                {
+                    label: '支払',
+                    data: costs,
+                    backgroundColor: 'rgba(254,147,57,0.7)',
+                    borderColor: 'rgba(254,147,57,1)',
+                    borderWidth: 1,
+                    borderRadius: 3,
+                    order: 3,
+                },
+                {
+                    label: '粗利',
+                    data: profits,
+                    type: 'line',
+                    borderColor: '#2e844a',
+                    backgroundColor: 'rgba(46,132,74,0.1)',
+                    borderWidth: 2.5,
+                    pointRadius: 4,
+                    pointBackgroundColor: '#2e844a',
+                    fill: true,
+                    tension: 0.3,
+                    order: 1,
+                },
+            ],
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            aspectRatio: 1.2,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+                tooltip: {
+                    callbacks: {
+                        label: function(ctx) {
+                            return ctx.dataset.label + ': ' + fmtFull(ctx.parsed.y);
+                        }
+                    }
+                },
+                legend: {
+                    position: 'bottom',
+                    labels: { usePointStyle: true, padding: 16 }
+                },
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        callback: function(v) { return fmtMan(v); }
+                    },
+                    grid: { color: 'rgba(0,0,0,0.06)' },
+                },
+                x: {
+                    grid: { display: false },
+                },
+            },
+        },
+    });
+})();
+</script>
+
+{% endblock %}

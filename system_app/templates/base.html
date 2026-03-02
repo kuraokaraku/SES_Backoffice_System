@@ -3,15 +3,35 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}都システム{% endblock %}</title>
+    <title>{% block title %}ITFLシステム{% endblock %}</title>
     {% load static %}
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tom-select@2.4.3/dist/css/tom-select.bootstrap5.min.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Serif+JP:wght@900&display=swap" rel="stylesheet">
 
     <style>
+        :root {
+            --sf-blue: #0176d3;
+            --sf-blue-dark: #014486;
+            --sf-bg: #f3f2f2;
+            --sf-card-bg: #fff;
+            --sf-border: #e5e5e5;
+            --sf-text: #181818;
+            --sf-text-muted: #706e6b;
+            --sf-success: #2e844a;
+            --sf-warning: #fe9339;
+            --sf-error: #ea001e;
+            --sf-radius: 4px;
+            --sf-shadow: 0 2px 4px rgba(0,0,0,.07);
+        }
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            color: var(--sf-text);
+        }
+
         /* ── Sidebar ── */
         .app-sidebar {
             position: fixed;
@@ -26,6 +46,7 @@
             z-index: 1030;
         }
         .app-sidebar .brand {
+            display: block;
             padding: 1.25rem 1.25rem 1rem;
             font-size: 1.5rem;
             font-weight: 900;
@@ -34,24 +55,13 @@
             border-bottom: 1px solid #334155;
             font-family: "Noto Serif JP", "Yu Mincho", "游明朝", serif;
             text-shadow: 1px 1px 2px rgba(0,0,0,.4);
+            text-decoration: none;
+        }
+        .app-sidebar .brand:hover {
+            color: #f8fafc;
         }
         .app-sidebar nav {
             padding: .75rem 0;
-        }
-        .app-sidebar .sidebar-logo {
-            flex: 1;
-            display: flex;
-            align-items: flex-end;
-            justify-content: center;
-            padding: 1.5rem;
-        }
-        .app-sidebar .sidebar-logo img {
-            width: 140px;
-            height: 140px;
-            border-radius: 50%;
-            object-fit: cover;
-            filter: grayscale(1) brightness(.25);
-            mix-blend-mode: screen;
         }
         .app-sidebar .nav-link {
             display: flex;
@@ -89,7 +99,7 @@
         .app-main {
             margin-left: 240px;
             min-height: 100vh;
-            background: #f8fafc;
+            background: var(--sf-bg);
         }
         .app-topbar {
             display: flex;
@@ -110,13 +120,305 @@
             padding-left: 0;
             padding-right: 0;
         }
+
+        /* ── SF Page Header (shared) ── */
+        .sf-page-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: .75rem;
+            padding: .75rem 0 1rem;
+        }
+        .sf-page-header .sf-title-group {
+            display: flex;
+            align-items: center;
+            gap: .75rem;
+        }
+        .sf-page-header .sf-icon {
+            width: 40px; height: 40px;
+            border-radius: 8px;
+            background: var(--sf-blue);
+            color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.15rem;
+            flex-shrink: 0;
+        }
+        .sf-page-header h2 {
+            font-size: 1.25rem;
+            font-weight: 700;
+            margin: 0;
+            color: var(--sf-text);
+        }
+        .sf-page-header .sf-subtitle {
+            font-size: .8rem;
+            color: var(--sf-text-muted);
+            margin-top: .1rem;
+        }
+
+        /* ── SF Breadcrumb ── */
+        .sf-breadcrumb {
+            display: flex;
+            align-items: center;
+            gap: .35rem;
+            font-size: .8rem;
+            color: var(--sf-text-muted);
+            padding: .5rem 0 0;
+            margin: 0;
+            list-style: none;
+        }
+        .sf-breadcrumb a {
+            color: var(--sf-blue);
+            text-decoration: none;
+        }
+        .sf-breadcrumb a:hover { text-decoration: underline; }
+        .sf-breadcrumb .sep { color: #c9c7c5; }
+
+        /* ── SF Section Card ── */
+        .sf-section {
+            background: var(--sf-card-bg);
+            border: 1px solid var(--sf-border);
+            border-radius: var(--sf-radius);
+            box-shadow: var(--sf-shadow);
+            margin-bottom: 1rem;
+            overflow: hidden;
+        }
+        .sf-section-header {
+            display: flex;
+            align-items: center;
+            gap: .5rem;
+            padding: .55rem .85rem;
+            background: #fafaf9;
+            border-bottom: 1px solid var(--sf-border);
+            font-size: .82rem;
+            font-weight: 700;
+            color: var(--sf-text);
+        }
+        .sf-section-header i {
+            font-size: .95rem;
+        }
+        .sf-section-body {
+            padding: .85rem;
+        }
+
+        /* ── SF Table ── */
+        .sf-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: .875rem;
+        }
+        .sf-table thead th {
+            background: #fafaf9;
+            border-bottom: 2px solid var(--sf-border);
+            padding: .55rem .75rem;
+            font-size: .78rem;
+            font-weight: 700;
+            color: var(--sf-text-muted);
+            text-transform: uppercase;
+            letter-spacing: .03em;
+        }
+        .sf-table tbody td {
+            padding: .55rem .75rem;
+            border-bottom: 1px solid #f0f0f0;
+            vertical-align: middle;
+        }
+        .sf-table tbody tr:hover {
+            background: #f3f2f2;
+        }
+
+        /* ── SF Highlights Panel ── */
+        .sf-highlights {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: .75rem;
+            padding: .85rem;
+            background: var(--sf-card-bg);
+            border: 1px solid var(--sf-border);
+            border-radius: var(--sf-radius);
+            box-shadow: var(--sf-shadow);
+            margin-bottom: 1rem;
+        }
+        .sf-highlights .hl-item .hl-label {
+            font-size: .7rem;
+            font-weight: 600;
+            color: var(--sf-text-muted);
+            text-transform: uppercase;
+            letter-spacing: .03em;
+        }
+        .sf-highlights .hl-item .hl-value {
+            font-size: .95rem;
+            font-weight: 600;
+            color: var(--sf-text);
+            margin-top: .1rem;
+        }
+
+        /* ── SF KPI Card ── */
+        .sf-kpi {
+            background: var(--sf-card-bg);
+            border: 1px solid var(--sf-border);
+            border-radius: var(--sf-radius);
+            box-shadow: var(--sf-shadow);
+            padding: .75rem;
+            display: flex;
+            align-items: center;
+            gap: .65rem;
+        }
+        .sf-kpi .kpi-icon {
+            width: 38px; height: 38px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1rem;
+            flex-shrink: 0;
+        }
+        .sf-kpi .kpi-label {
+            font-size: .72rem;
+            color: var(--sf-text-muted);
+            font-weight: 600;
+        }
+        .sf-kpi .kpi-value {
+            font-size: 1rem;
+            font-weight: 700;
+            color: var(--sf-text);
+        }
+
+        /* ── SF Fieldset (form card) ── */
+        .sf-fieldset {
+            background: var(--sf-card-bg);
+            border: 1px solid var(--sf-border);
+            border-radius: var(--sf-radius);
+            box-shadow: var(--sf-shadow);
+            margin-bottom: 1rem;
+            overflow: hidden;
+        }
+        .sf-fieldset-header {
+            display: flex;
+            align-items: center;
+            gap: .5rem;
+            padding: .55rem .85rem;
+            background: #fafaf9;
+            border-bottom: 1px solid var(--sf-border);
+            font-size: .82rem;
+            font-weight: 700;
+            color: var(--sf-text);
+        }
+        .sf-fieldset-header i { font-size: .95rem; }
+        .sf-fieldset-body { padding: .85rem; }
+
+        /* ── SF Buttons ── */
+        .btn-sf-primary {
+            background: var(--sf-blue);
+            color: #fff;
+            font-weight: 600;
+            border: none;
+            border-radius: var(--sf-radius);
+            padding: .45rem 1.2rem;
+        }
+        .btn-sf-primary:hover {
+            background: var(--sf-blue-dark);
+            color: #fff;
+        }
+        .btn-sf-outline {
+            background: transparent;
+            color: var(--sf-blue);
+            font-weight: 600;
+            border: 1px solid var(--sf-blue);
+            border-radius: var(--sf-radius);
+            padding: .45rem 1.2rem;
+        }
+        .btn-sf-outline:hover {
+            background: var(--sf-blue);
+            color: #fff;
+        }
+
+        /* ── SF Badges ── */
+        .sf-badge {
+            font-size: .7rem;
+            font-weight: 600;
+            padding: .2em .55em;
+            border-radius: 3px;
+            display: inline-block;
+        }
+        .sf-badge-success { background: #e6f4ea; color: var(--sf-success); }
+        .sf-badge-warning { background: #fef3e0; color: #a86800; }
+        .sf-badge-error   { background: #fde7e9; color: var(--sf-error); }
+        .sf-badge-neutral { background: #f0f0f0; color: var(--sf-text-muted); }
+
+        /* ── SF Month Nav ── */
+        .sf-month-nav {
+            display: inline-flex;
+            align-items: center;
+            gap: .4rem;
+        }
+        .sf-month-nav a {
+            width: 28px; height: 28px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: var(--sf-radius);
+            border: 1px solid var(--sf-border);
+            color: var(--sf-text-muted);
+            text-decoration: none;
+            font-size: .8rem;
+            background: var(--sf-card-bg);
+        }
+        .sf-month-nav a:hover {
+            background: #f0f0f0;
+            color: var(--sf-text);
+        }
+
+        /* ── Detail Grid ── */
+        .detail-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: .5rem .75rem;
+        }
+        .detail-grid .dg-item .dg-label {
+            font-size: .7rem;
+            font-weight: 600;
+            color: var(--sf-text-muted);
+            text-transform: uppercase;
+            letter-spacing: .02em;
+        }
+        .detail-grid .dg-item .dg-value {
+            font-size: .875rem;
+            color: var(--sf-text);
+        }
+
+        /* ── SF Filter Bar ── */
+        .sf-filter-bar {
+            background: var(--sf-card-bg);
+            border: 1px solid var(--sf-border);
+            border-radius: var(--sf-radius);
+            padding: .65rem .85rem;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: .65rem;
+            flex-wrap: wrap;
+        }
     </style>
 </head>
 <body>
     <!-- Sidebar -->
     <aside class="app-sidebar">
-        <div class="brand">都システム</div>
+        <a class="brand" href="{% url 'dashboard' %}">ITFLシステム</a>
         <nav>
+            <a class="nav-link {% if '/dashboard/' in request.path %}active{% endif %}"
+               href="{% url 'dashboard' %}">
+                <i class="bi bi-grid-1x2"></i>ダッシュボード
+            </a>
+            <a class="nav-link {% if '/sales/' in request.path %}active{% endif %}"
+               href="{% url 'sales_board' %}">
+                <i class="bi bi-kanban"></i>営業管理
+            </a>
+            <a class="nav-link {% if '/party/' in request.path or '/assignment/' in request.path %}active{% endif %}"
+               href="{% url 'party_list' %}">
+                <i class="bi bi-briefcase"></i>契約管理
+            </a>
             <a class="nav-link {% if '/timesheets/' in request.path %}active{% endif %}"
                href="{% url 'timesheet_dashboard' %}">
                 <i class="bi bi-file-earmark-spreadsheet"></i>勤務表回収
@@ -125,14 +427,16 @@
                href="{% url 'invoice_list' %}">
                 <i class="bi bi-receipt"></i>請求書
             </a>
-            <a class="nav-link {% if '/party/' in request.path or '/assignment/' in request.path %}active{% endif %}"
-               href="{% url 'party_list' %}">
-                <i class="bi bi-briefcase"></i>契約管理
+            <a class="nav-link {% if '/ar/' in request.path %}active{% endif %}"
+               href="{% url 'ar_list' %}">
+                <i class="bi bi-cash-coin"></i>入金管理
+            </a>
+            <a class="nav-link {% if '/ap/' in request.path %}active{% endif %}"
+               href="{% url 'ap_list' %}">
+                <i class="bi bi-wallet2"></i>支払管理
             </a>
         </nav>
-        <div class="sidebar-logo">
-            <img src="{% static 'img/logo.png' %}" alt="Miya-Co">
-        </div>
+        <div style="flex:1"></div>
         <div class="sidebar-footer text-muted">
             {% if user.is_authenticated %}{{ user.username }}{% endif %}
         </div>
@@ -156,6 +460,7 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tom-select@2.4.3/dist/js/tom-select.complete.min.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', function () {
             var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))

@@ -32,7 +32,10 @@ SECRET_KEY = os.getenv('SECRET_KEY', 'fallback-secret-key')
 DEBUG = os.getenv('DEBUG', 'False') == 'True'
 #DEBUG = False
 
-ALLOWED_HOSTS = ["85.131.249.73", "localhost", "itfl-kanri.jp", '127.0.0.1']
+ALLOWED_HOSTS = ["85.131.249.73", "localhost", "itfl-kanri.jp", "127.0.0.1"]
+_extra_hosts = os.getenv("ALLOWED_HOSTS", "")
+if _extra_hosts:
+    ALLOWED_HOSTS += [h.strip() for h in _extra_hosts.split(",") if h.strip()]
 
 # XServer設定
 XSERVER_IMAP_SERVER = os.getenv('XSERVER_IMAP_SERVER')
@@ -87,12 +90,25 @@ WSGI_APPLICATION = 'office_system.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+if os.getenv('DB_HOST'):
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.mysql',
+            'NAME': os.getenv('DB_NAME', 'itfl'),
+            'USER': os.getenv('DB_USER', 'itfl_admin'),
+            'PASSWORD': os.getenv('DB_PASSWORD', ''),
+            'HOST': os.getenv('DB_HOST'),
+            'PORT': os.getenv('DB_PORT', '3306'),
+            'OPTIONS': {'charset': 'utf8mb4'},
+        }
     }
-}
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
 
 
 # Password validation
@@ -140,7 +156,7 @@ STATIC_URL = 'static/'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # ログイン後のリダイレクト先も一番下に追記しておきましょう
-LOGIN_REDIRECT_URL = 'menu'
+LOGIN_REDIRECT_URL = '/dashboard/'
 LOGIN_URL = '/login/'
 
 # ログアウトした後に遷移するURL
@@ -154,3 +170,9 @@ CSRF_TRUSTED_ORIGINS = ['https://itfl-kanri.jp']
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
+# Production security settings
+if not DEBUG:
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
