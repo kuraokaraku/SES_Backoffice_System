@@ -1,0 +1,368 @@
+{% extends "base.html" %}
+{% block title %}{% if is_edit %}商談編集{% else %}新規商談{% endif %} - 営業管理{% endblock %}
+{% block content %}
+
+<style>
+    .sf-form-container {
+        max-width: 760px;
+        margin: 0 auto;
+    }
+
+    /* ── Breadcrumb ── */
+    .sf-breadcrumb {
+        font-size: .8rem;
+        padding: .5rem 0 0;
+    }
+    .sf-breadcrumb a {
+        color: var(--sf-blue);
+        text-decoration: none;
+    }
+    .sf-breadcrumb a:hover { text-decoration: underline; }
+
+    /* ── Page header ── */
+    .sf-form-header {
+        display: flex;
+        align-items: center;
+        gap: .75rem;
+        padding: .75rem 0 1.25rem;
+    }
+    .sf-form-header .form-icon {
+        width: 40px; height: 40px;
+        border-radius: 8px;
+        background: var(--sf-blue);
+        color: #fff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.15rem;
+        flex-shrink: 0;
+    }
+    .sf-form-header h2 {
+        font-size: 1.2rem;
+        font-weight: 700;
+        margin: 0;
+        color: var(--sf-text);
+    }
+
+    /* ── SLDS fieldset ── */
+    .sf-fieldset {
+        background: var(--sf-card-bg);
+        border: 1px solid var(--sf-border);
+        border-radius: var(--sf-radius);
+        margin-bottom: 1.25rem;
+        overflow: hidden;
+    }
+    .sf-fieldset-header {
+        padding: .6rem 1rem;
+        background: #fafaf9;
+        border-bottom: 1px solid var(--sf-border);
+        font-size: .8rem;
+        font-weight: 700;
+        color: var(--sf-text);
+        display: flex;
+        align-items: center;
+        gap: .5rem;
+    }
+    .sf-fieldset-header i {
+        color: var(--sf-blue);
+        font-size: .9rem;
+    }
+    .sf-fieldset-body {
+        padding: 1rem 1.25rem;
+    }
+
+    /* ── Read-only card (edit mode project info) ── */
+    .sf-readonly {
+        background: #fafaf9;
+    }
+    .sf-readonly .dl-label {
+        font-size: .7rem;
+        font-weight: 600;
+        color: var(--sf-text-muted);
+        text-transform: uppercase;
+        letter-spacing: .03em;
+        margin-bottom: .1rem;
+    }
+    .sf-readonly .dl-value {
+        font-size: .85rem;
+        color: var(--sf-text);
+        margin-bottom: .5rem;
+    }
+
+    /* ── Form labels ── */
+    .sf-fieldset-body .form-label {
+        font-size: .78rem;
+        font-weight: 600;
+        color: var(--sf-text-muted);
+        margin-bottom: .25rem;
+    }
+    .sf-fieldset-body .form-control,
+    .sf-fieldset-body .form-select {
+        border-color: var(--sf-border);
+        border-radius: var(--sf-radius);
+        font-size: .85rem;
+    }
+    .sf-fieldset-body .form-control:focus,
+    .sf-fieldset-body .form-select:focus {
+        border-color: var(--sf-blue);
+        box-shadow: 0 0 0 2px rgba(1,118,211,.15);
+    }
+    .sf-fieldset-body .form-text {
+        font-size: .75rem;
+        color: var(--sf-text-muted);
+    }
+
+    /* ── Slide animation for project fields ── */
+    #new-project-fields {
+        overflow: hidden;
+        transition: max-height .3s ease, opacity .25s ease;
+    }
+    #new-project-fields.collapsed {
+        max-height: 0 !important;
+        opacity: 0;
+        padding: 0;
+    }
+
+    /* ── Button bar ── */
+    .sf-btn-primary {
+        background: var(--sf-blue);
+        color: #fff;
+        border: none;
+        border-radius: var(--sf-radius);
+        font-weight: 600;
+        padding: .45rem 1.5rem;
+        font-size: .85rem;
+    }
+    .sf-btn-primary:hover {
+        background: var(--sf-blue-dark);
+        color: #fff;
+    }
+    .sf-btn-cancel {
+        background: transparent;
+        color: var(--sf-text-muted);
+        border: 1px solid var(--sf-border);
+        border-radius: var(--sf-radius);
+        font-weight: 500;
+        padding: .45rem 1.2rem;
+        font-size: .85rem;
+        text-decoration: none;
+    }
+    .sf-btn-cancel:hover {
+        background: #f3f2f2;
+        color: var(--sf-text);
+    }
+
+    /* ── Error alert ── */
+    .sf-error-alert {
+        background: #fef1ee;
+        border: 1px solid #f9c6c6;
+        border-left: 4px solid var(--sf-error);
+        border-radius: var(--sf-radius);
+        padding: .75rem 1rem;
+        margin-bottom: 1rem;
+        font-size: .85rem;
+        color: var(--sf-error);
+    }
+</style>
+
+<div class="sf-form-container">
+    <!-- Breadcrumb -->
+    <div class="sf-breadcrumb">
+        <a href="{% url 'sales_board' %}">営業管理</a>
+        <span style="color:var(--sf-text-muted);margin:0 .3rem">/</span>
+        {% if is_edit %}
+        <a href="{% url 'sales_deal_detail' deal.pk %}">{{ deal.project.title }} × {{ deal.display_candidate_name }}</a>
+        <span style="color:var(--sf-text-muted);margin:0 .3rem">/</span>
+        <span style="color:var(--sf-text-muted)">編集</span>
+        {% else %}
+        <span style="color:var(--sf-text-muted)">新規作成</span>
+        {% endif %}
+    </div>
+
+    <!-- Page header -->
+    <div class="sf-form-header">
+        <div class="form-icon">
+            <i class="bi bi-{% if is_edit %}pencil-square{% else %}plus-lg{% endif %}"></i>
+        </div>
+        <h2>{% if is_edit %}商談編集{% else %}新規商談{% endif %}</h2>
+    </div>
+
+    {% if form.errors %}
+    <div class="sf-error-alert">
+        {% for field, errors in form.errors.items %}
+        {% for error in errors %}
+        <div>{{ error }}</div>
+        {% endfor %}
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <form method="post">
+        {% csrf_token %}
+
+        {% if not is_edit %}
+        {# --- 新規作成時：案件セクション --- #}
+        <div class="sf-fieldset">
+            <div class="sf-fieldset-header">
+                <i class="bi bi-building"></i> 案件
+            </div>
+            <div class="sf-fieldset-body">
+                <div class="mb-3">
+                    <label for="id_existing_project" class="form-label">既存案件を選択</label>
+                    {{ form.existing_project }}
+                </div>
+                <div id="new-project-fields">
+                    <div class="mb-3">
+                        <label for="id_company_name" class="form-label">発注元会社名 <span style="color:var(--sf-error)">*</span></label>
+                        {{ form.company_name }}
+                    </div>
+                    <div class="mb-3">
+                        <label for="id_title" class="form-label">案件名 <span style="color:var(--sf-error)">*</span></label>
+                        {{ form.title }}
+                    </div>
+                    <div class="mb-3">
+                        <label for="id_required_skills" class="form-label">必要スキル</label>
+                        {{ form.required_skills }}
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="id_budget_range" class="form-label">単価帯</label>
+                            {{ form.budget_range }}
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="id_project_memo" class="form-label">案件メモ</label>
+                        {{ form.project_memo }}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {# --- 人材セクション --- #}
+        <div class="sf-fieldset">
+            <div class="sf-fieldset-header">
+                <i class="bi bi-person"></i> 人材（任意）
+            </div>
+            <div class="sf-fieldset-body">
+                <div class="mb-3">
+                    <label for="id_candidate_name" class="form-label">人材名（テキスト入力）</label>
+                    {{ form.candidate_name }}
+                </div>
+                <div class="mb-3">
+                    <label for="id_candidate_entity" class="form-label">既存人材を選択</label>
+                    {{ form.candidate_entity }}
+                </div>
+            </div>
+        </div>
+
+        {# --- 商談セクション --- #}
+        <div class="sf-fieldset">
+            <div class="sf-fieldset-header">
+                <i class="bi bi-handshake"></i> 商談
+            </div>
+            <div class="sf-fieldset-body">
+                <div class="mb-3">
+                    <label for="id_next_action_due" class="form-label">次回アクション期日</label>
+                    {{ form.next_action_due }}
+                </div>
+                <div class="mb-3">
+                    <label for="id_memo" class="form-label">メモ</label>
+                    {{ form.memo }}
+                </div>
+            </div>
+        </div>
+
+        {% else %}
+        {# --- 編集時：案件は読み取り専用 --- #}
+        <div class="sf-fieldset">
+            <div class="sf-fieldset-header">
+                <i class="bi bi-building"></i> 案件情報
+                <span style="font-weight:400;color:var(--sf-text-muted);font-size:.72rem;margin-left:.5rem">読み取り専用</span>
+            </div>
+            <div class="sf-fieldset-body sf-readonly">
+                <div class="row">
+                    <div class="col-sm-6">
+                        <div class="dl-label">発注元</div>
+                        <div class="dl-value">{{ deal.project.company_name }}</div>
+                    </div>
+                    <div class="col-sm-6">
+                        <div class="dl-label">案件名</div>
+                        <div class="dl-value">{{ deal.project.title }}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="sf-fieldset">
+            <div class="sf-fieldset-header">
+                <i class="bi bi-person"></i> 人材
+            </div>
+            <div class="sf-fieldset-body">
+                <div class="mb-3">
+                    <label for="id_candidate_name" class="form-label">人材名</label>
+                    {{ form.candidate_name }}
+                </div>
+                <div class="mb-3">
+                    <label for="id_candidate_entity" class="form-label">既存人材を選択</label>
+                    {{ form.candidate_entity }}
+                </div>
+            </div>
+        </div>
+
+        <div class="sf-fieldset">
+            <div class="sf-fieldset-header">
+                <i class="bi bi-handshake"></i> 商談
+            </div>
+            <div class="sf-fieldset-body">
+                <div class="mb-3">
+                    <label for="id_next_action_due" class="form-label">次回アクション期日</label>
+                    {{ form.next_action_due }}
+                </div>
+                <div class="mb-3">
+                    <label for="id_memo" class="form-label">メモ</label>
+                    {{ form.memo }}
+                </div>
+                <div class="mb-3">
+                    <label for="id_assignment" class="form-label">アサインメント（任意）</label>
+                    {{ form.assignment }}
+                    <div class="form-text">成約後、アサインメントとリンクできます</div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="d-flex gap-2 pb-3">
+            <button type="submit" class="btn sf-btn-primary">{% if is_edit %}更新{% else %}作成{% endif %}</button>
+            <a href="{% if is_edit %}{% url 'sales_deal_detail' deal.pk %}{% else %}{% url 'sales_board' %}{% endif %}"
+               class="sf-btn-cancel">キャンセル</a>
+        </div>
+    </form>
+</div>
+
+{% if not is_edit %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    var sel = document.getElementById('id_existing_project');
+    var fields = document.getElementById('new-project-fields');
+
+    function toggle() {
+        if (sel.value) {
+            fields.classList.add('collapsed');
+        } else {
+            fields.classList.remove('collapsed');
+            fields.style.maxHeight = fields.scrollHeight + 'px';
+        }
+    }
+
+    // Set initial max-height for transition
+    if (!sel.value) {
+        fields.style.maxHeight = fields.scrollHeight + 'px';
+    }
+
+    sel.addEventListener('change', toggle);
+    toggle();
+});
+</script>
+{% endif %}
+
+{% endblock %}
