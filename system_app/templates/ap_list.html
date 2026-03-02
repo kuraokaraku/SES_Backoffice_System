@@ -1,0 +1,265 @@
+{% extends "base.html" %}
+{% load l10n %}
+
+{% block title %}{% localize off %}{{ year }}{% endlocalize %}年{{ month }}月 支払管理 | ITFLシステム{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+
+    {% if messages %}
+    {% for msg in messages %}
+    <div class="alert alert-{{ msg.tags }} alert-dismissible fade show py-2" role="alert">
+        {{ msg }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    {% endfor %}
+    {% endif %}
+
+    <!-- SF Page Header -->
+    <div class="sf-page-header">
+        <div class="sf-title-group">
+            <div class="sf-icon" style="background:#f59e0b"><i class="bi bi-wallet2"></i></div>
+            <div>
+                <h2>{% localize off %}{{ year }}{% endlocalize %}年{{ month }}月 支払管理</h2>
+                <div class="sf-subtitle">
+                    <span class="sf-month-nav">
+                        <a href="?ym={{ prev_ym }}">&lt;</a>
+                        <a href="?ym={{ next_ym }}">&gt;</a>
+                    </span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- KPI Summary Cards -->
+    <div class="row g-2 mb-3">
+        <div class="col-6 col-md-3">
+            <div class="sf-kpi">
+                <div class="kpi-icon" style="background:#fff3e0;color:#f59e0b">
+                    <i class="bi bi-receipt"></i>
+                </div>
+                <div>
+                    <div class="kpi-label">支払合計</div>
+                    <div class="kpi-value">¥{{ summary_total|floatformat:0 }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="sf-kpi">
+                <div class="kpi-icon" style="background:#e6f4ea;color:var(--sf-success)">
+                    <i class="bi bi-check-circle"></i>
+                </div>
+                <div>
+                    <div class="kpi-label">支払済</div>
+                    <div class="kpi-value" style="color:var(--sf-success)">¥{{ summary_paid|floatformat:0 }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="sf-kpi">
+                <div class="kpi-icon" style="background:#fde7e9;color:var(--sf-error)">
+                    <i class="bi bi-exclamation-circle"></i>
+                </div>
+                <div>
+                    <div class="kpi-label">未支払</div>
+                    <div class="kpi-value" style="color:var(--sf-error)">¥{{ summary_remain|floatformat:0 }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="sf-kpi">
+                <div class="kpi-icon" style="background:#fff3e0;color:#f59e0b">
+                    <i class="bi bi-bar-chart"></i>
+                </div>
+                <div>
+                    <div class="kpi-label">完了</div>
+                    <div class="kpi-value">{{ count_paid }} / {{ count_total }}件</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filter Bar -->
+    <form method="get" class="sf-filter-bar">
+        <input type="hidden" name="ym" value="{{ ym }}">
+        <div>
+            <label class="form-label mb-0 small" style="color:var(--sf-text-muted)">支払先</label>
+            <select name="vendor" class="form-select form-select-sm" style="min-width:140px">
+                <option value="">すべて</option>
+                {% for v in vendors %}
+                <option value="{{ v.id }}" {% if filter_vendor|stringformat:"s" == v.id|stringformat:"s" %}selected{% endif %}>
+                    {{ v.name }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+        <div>
+            <label class="form-label mb-0 small" style="color:var(--sf-text-muted)">状態</label>
+            <select name="status" class="form-select form-select-sm" style="min-width:110px">
+                <option value="">すべて</option>
+                <option value="unpaid" {% if filter_status == "unpaid" %}selected{% endif %}>未支払</option>
+                <option value="partial" {% if filter_status == "partial" %}selected{% endif %}>一部支払</option>
+                <option value="paid" {% if filter_status == "paid" %}selected{% endif %}>支払済</option>
+                <option value="overdue" {% if filter_status == "overdue" %}selected{% endif %}>期日超過</option>
+            </select>
+        </div>
+        <div class="d-flex gap-2 align-items-end">
+            <button type="submit" class="btn btn-sf-primary btn-sm">絞り込み</button>
+            <a href="?ym={{ ym }}" class="btn btn-sf-outline btn-sm">リセット</a>
+        </div>
+    </form>
+
+    <div class="row">
+        <!-- 買掛一覧テーブル -->
+        <div class="{% if selected_payable %}col-lg-7{% else %}col-12{% endif %}">
+            <div class="sf-section">
+                <div class="table-responsive">
+                    <table class="sf-table">
+                        <thead>
+                            <tr>
+                                <th>買掛番号</th>
+                                <th>支払先</th>
+                                <th>支払期日</th>
+                                <th class="text-end">支払額</th>
+                                <th class="text-end">支払済</th>
+                                <th class="text-end">残額</th>
+                                <th>状態</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in payables %}
+                            <tr style="cursor:pointer"
+                                {% if selected_payable and selected_payable.id == row.obj.id %}style="cursor:pointer;background:#fff3e0"{% endif %}
+                                onclick="location.href='?ym={{ ym }}{% if filter_vendor %}&vendor={{ filter_vendor }}{% endif %}{% if filter_status %}&status={{ filter_status }}{% endif %}&selected={{ row.obj.id }}'">
+                                <td class="fw-semibold">{{ row.obj.payable_number|default:"—" }}</td>
+                                <td>{{ row.obj.assignment.downstream_entity.name }}</td>
+                                <td>
+                                    {{ row.obj.due_date|date:"Y/m/d"|default:"—" }}
+                                    {% if row.overdue %}<span class="sf-badge sf-badge-error ms-1">超過</span>{% endif %}
+                                </td>
+                                <td class="text-end">{{ row.obj.total_amount|floatformat:0 }}</td>
+                                <td class="text-end">{{ row.paid_sum|floatformat:0 }}</td>
+                                <td class="text-end fw-bold" style="{% if row.remain > 0 %}color:var(--sf-error){% else %}color:var(--sf-success){% endif %}">
+                                    {{ row.remain|floatformat:0 }}
+                                </td>
+                                <td>
+                                    {% if row.display_status == "paid" %}
+                                        <span class="sf-badge sf-badge-success">支払済</span>
+                                    {% elif row.display_status == "partial" %}
+                                        <span class="sf-badge sf-badge-warning">一部支払</span>
+                                    {% else %}
+                                        <span class="sf-badge sf-badge-neutral">未支払</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr><td colspan="7" class="text-center py-4" style="color:var(--sf-text-muted)">この月の買掛はありません</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- 消込パネル -->
+        {% if selected_payable %}
+        <div class="col-lg-5">
+            <div class="sf-section">
+                <div class="sf-section-header">
+                    <i class="bi bi-check2-circle" style="color:var(--sf-success)"></i>
+                    消込: {{ selected_payable.payable_number|default:"—" }}
+                </div>
+                <div class="sf-section-body">
+                    <!-- 買掛情報サマリ -->
+                    <div class="detail-grid mb-3" style="grid-template-columns:100px 1fr">
+                        <div class="dg-item">
+                            <div class="dg-label">支払先</div>
+                            <div class="dg-value">{{ selected_payable.assignment.downstream_entity.name }}</div>
+                        </div>
+                        <div class="dg-item">
+                            <div class="dg-label">担当者</div>
+                            <div class="dg-value">{{ selected_payable.assignment.worker_entity.name }}</div>
+                        </div>
+                        <div class="dg-item">
+                            <div class="dg-label">支払額</div>
+                            <div class="dg-value fw-bold">¥{{ selected_payable.total_amount|floatformat:0 }}</div>
+                        </div>
+                        <div class="dg-item">
+                            <div class="dg-label">残額</div>
+                            <div class="dg-value fw-bold" style="{% if remain_amount > 0 %}color:var(--sf-error){% else %}color:var(--sf-success){% endif %}">
+                                ¥{{ remain_amount|floatformat:0 }}
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 支払登録フォーム -->
+                    <form method="post" action="{% url 'ap_payment_create' selected_payable.id %}" class="mb-3">
+                        {% csrf_token %}
+                        <input type="hidden" name="ym" value="{{ ym }}">
+                        <div class="row g-2 mb-2">
+                            <div class="col-6">
+                                <label class="form-label mb-0 small">支払日</label>
+                                <input type="date" name="paid_date" class="form-control form-control-sm"
+                                       value="{{ today|date:'Y-m-d' }}" required>
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label mb-0 small">支払額</label>
+                                {% localize off %}
+                                <input type="number" name="amount" class="form-control form-control-sm"
+                                       value="{{ remain_amount_raw }}" min="1" required>
+                                {% endlocalize %}
+                            </div>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label mb-0 small">メモ</label>
+                            <input type="text" name="note" class="form-control form-control-sm" placeholder="振込先など">
+                        </div>
+                        <button type="submit" class="btn btn-sf-primary btn-sm w-100">支払登録</button>
+                    </form>
+
+                    <!-- 支払履歴 -->
+                    {% if payments %}
+                    <div class="sf-section-header" style="margin:-0.85rem -0.85rem 0.5rem;border-top:1px solid var(--sf-border);border-bottom:1px solid var(--sf-border);border-radius:0">
+                        <i class="bi bi-clock-history" style="color:var(--sf-text-muted)"></i> 支払履歴
+                    </div>
+                    <table class="sf-table">
+                        <thead>
+                            <tr>
+                                <th>支払日</th>
+                                <th class="text-end">金額</th>
+                                <th>メモ</th>
+                                <th>登録者</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for p in payments %}
+                            <tr>
+                                <td>{{ p.paid_date|date:"Y/m/d" }}</td>
+                                <td class="text-end">¥{{ p.amount|floatformat:0 }}</td>
+                                <td style="color:var(--sf-text-muted);font-size:.8rem">{{ p.note|default:"—" }}</td>
+                                <td style="font-size:.8rem">{{ p.created_by.username|default:"—" }}</td>
+                                <td>
+                                    <form method="post" action="{% url 'ap_payment_delete' p.id %}"
+                                          onsubmit="return confirm('この支払を取り消しますか？')">
+                                        {% csrf_token %}
+                                        <input type="hidden" name="ym" value="{{ ym }}">
+                                        <button type="submit" class="btn btn-outline-danger btn-sm py-0 px-1">
+                                            <i class="bi bi-x-lg"></i>
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                    {% else %}
+                    <p class="text-center mb-0" style="color:var(--sf-text-muted);font-size:.8rem">支払履歴はありません</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
