@@ -2,7 +2,10 @@
 from django.contrib import admin
 from .models import (
     Freelancer, MonthlyProcess, TaskStatus, LegacyTaskStatus,
-    ContactEntity, EntityContactPerson, Assignment, ServiceContract
+    ContactEntity, EntityContactPerson, Assignment, ServiceContract,
+    Invoice, InvoicePayment,
+    Payable, PayablePayment,
+    SalesProject, SalesDeal, SalesAction, SalesStatusChange,
 )
 
 @admin.register(Freelancer)
@@ -59,3 +62,52 @@ class AssignmentAdmin(admin.ModelAdmin):
 class ServiceContractAdmin(admin.ModelAdmin):
     list_display = ('id', 'assignment', 'unit_price', 'valid_from', 'valid_to')
     list_filter = ('valid_from', 'valid_to')
+
+
+@admin.register(Invoice)
+class InvoiceAdmin(admin.ModelAdmin):
+    list_display = ('invoice_number', 'assignment', 'billing_ym', 'status', 'total_amount', 'due_date')
+    list_filter = ('status', 'billing_ym')
+
+
+@admin.register(InvoicePayment)
+class InvoicePaymentAdmin(admin.ModelAdmin):
+    list_display = ('invoice', 'paid_date', 'amount', 'note', 'created_by', 'created_at')
+    list_filter = ('paid_date',)
+    readonly_fields = ('created_at', 'updated_at')
+
+
+@admin.register(Payable)
+class PayableAdmin(admin.ModelAdmin):
+    list_display = ('payable_number', 'assignment', 'billing_ym', 'status', 'total_amount', 'due_date')
+    list_filter = ('status', 'billing_ym')
+
+
+@admin.register(PayablePayment)
+class PayablePaymentAdmin(admin.ModelAdmin):
+    list_display = ('payable', 'paid_date', 'amount', 'note', 'created_by', 'created_at')
+    list_filter = ('paid_date',)
+    readonly_fields = ('created_at', 'updated_at')
+
+
+@admin.register(SalesProject)
+class SalesProjectAdmin(admin.ModelAdmin):
+    list_display = ('company_name', 'title', 'budget_range', 'created_at')
+
+
+@admin.register(SalesDeal)
+class SalesDealAdmin(admin.ModelAdmin):
+    list_display = ('project', 'candidate_name', 'status', 'owner', 'created_at')
+    list_filter = ('status', 'owner')
+
+
+@admin.register(SalesAction)
+class SalesActionAdmin(admin.ModelAdmin):
+    list_display = ('deal', 'action_type', 'actor', 'acted_at')
+    list_filter = ('action_type',)
+
+
+@admin.register(SalesStatusChange)
+class SalesStatusChangeAdmin(admin.ModelAdmin):
+    list_display = ('deal', 'from_status', 'to_status', 'actor', 'changed_at')
+    readonly_fields = ('changed_at',)

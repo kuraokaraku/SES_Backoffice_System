@@ -127,8 +127,6 @@ class Assignment(models.Model):
         null=True,
     )
 
-    order_period_start_ym = models.DateField(blank=True, null=True)
-    order_period_end_ym = models.DateField(blank=True, null=True)
     is_active = models.BooleanField(default=True, verbose_name="稼働中")
 
     def __str__(self):
@@ -415,6 +413,195 @@ class Timesheet(models.Model):
         return f"Timesheet {self.assignment_id} ({self.billing_ym})"
 
 
+class InvoicePayment(models.Model):
+    """入金（消込）レコード"""
+    invoice = models.ForeignKey(
+        Invoice,
+        on_delete=models.CASCADE,
+        related_name="payments",
+        verbose_name="請求書",
+    )
+    paid_date = models.DateField(verbose_name="入金日")
+    amount = models.DecimalField(
+        max_digits=12, decimal_places=0, verbose_name="入金額"
+    )
+    note = models.TextField(blank=True, default="", verbose_name="メモ")
+    created_by = models.ForeignKey(
+        'auth.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        verbose_name="登録者",
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="登録日時")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新日時")
+
+    class Meta:
+        verbose_name = "入金"
+        verbose_name_plural = "入金一覧"
+        ordering = ["-paid_date", "-created_at"]
+        indexes = [
+            models.Index(fields=["invoice"]),
+            models.Index(fields=["paid_date"]),
+        ]
+
+    def __str__(self):
+        return f"{self.invoice} - ¥{self.amount:,.0f} ({self.paid_date})"
+
+
+class Payable(models.Model):
+    """買掛ヘッダ（下位への支払い）"""
+    STATUS_CHOICES = [
+        ('draft', '下書き'),
+        ('final', '確定'),
+        ('sent', '請求書受領済'),
+        ('cancelled', '取消'),
+    ]
+
+    assignment = models.ForeignKey(
+        Assignment,
+        on_delete=models.CASCADE,
+        related_name="payables",
+    )
+    billing_ym = models.CharField(max_length=6, verbose_name="対象年月")  # "YYYYMM"
+    status = models.CharField(
+        max_length=10,
+        choices=STATUS_CHOICES,
+        default='draft',
+        verbose_name="ステータス",
+    )
+    payable_number = models.CharField(
+        max_length=50,
+        null=True,
+        blank=True,
+        unique=True,
+        verbose_name="買掛番号",
+    )
+    issue_date = models.DateField(null=True, blank=True, verbose_name="発行日")
+    due_date = models.DateField(null=True, blank=True, verbose_name="支払期日")
+    tax_rate = models.DecimalField(
+        max_digits=4,
+        decimal_places=2,
+        default=Decimal("0.10"),
+        verbose_name="税率",
+    )
+    subtotal_amount = models.DecimalField(
+        max_digits=12, decimal_places=0, default=0, verbose_name="小計"
+    )
+    tax_amount = models.DecimalField(
+        max_digits=12, decimal_places=0, default=0, verbose_name="消費税額"
+    )
+    total_amount = models.DecimalField(
+        max_digits=12, decimal_places=0, default=0, verbose_name="合計金額"
+    )
+    actual_hours = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True, verbose_name="実稼働時間"
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="作成日時")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新日時")
+
+    class Meta:
+        verbose_name = "買掛"
+        verbose_name_plural = "買掛一覧"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["assignment", "billing_ym"],
+                name="uniq_payable_assignment_month",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["billing_ym", "status"]),
+        ]
+
+    def __str__(self):
+        return f"Payable {self.payable_number or 'DRAFT'} ({self.billing_ym})"
+
+
+class PayableLine(models.Model):
+    """買掛明細行"""
+    KIND_CHOICES = [
+        ('basic', '基本'),
+        ('excess', '超過'),
+        ('deduction', '控除'),
+        ('expense', '交通費等'),
+        ('adjustment', '調整'),
+    ]
+
+    payable = models.ForeignKey(
+        Payable,
+        on_delete=models.CASCADE,
+        related_name="lines",
+    )
+    kind = models.CharField(
+        max_length=20,
+        choices=KIND_CHOICES,
+        default='basic',
+        verbose_name="種別",
+    )
+    display_order = models.PositiveSmallIntegerField(default=0, verbose_name="並び順")
+    item_name = models.CharField(max_length=255, verbose_name="品名")
+    quantity = models.DecimalField(
+        max_digits=10, decimal_places=2, default=1, verbose_name="数量"
+    )
+    unit_price = models.DecimalField(
+        max_digits=12, decimal_places=0, default=0, verbose_name="単価"
+    )
+    amount = models.DecimalField(
+        max_digits=12, decimal_places=0, default=0, verbose_name="金額"
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="作成日時")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新日時")
+
+    class Meta:
+        verbose_name = "買掛明細行"
+        verbose_name_plural = "買掛明細行一覧"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["payable", "display_order"],
+                name="uniq_payable_line_order",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.item_name} ({self.get_kind_display()})"
+
+
+class PayablePayment(models.Model):
+    """出金（消込）レコード"""
+    payable = models.ForeignKey(
+        Payable,
+        on_delete=models.CASCADE,
+        related_name="payments",
+        verbose_name="買掛",
+    )
+    paid_date = models.DateField(verbose_name="支払日")
+    amount = models.DecimalField(
+        max_digits=12, decimal_places=0, verbose_name="支払額"
+    )
+    note = models.TextField(blank=True, default="", verbose_name="メモ")
+    created_by = models.ForeignKey(
+        'auth.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        verbose_name="登録者",
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="登録日時")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新日時")
+
+    class Meta:
+        verbose_name = "出金"
+        verbose_name_plural = "出金一覧"
+        ordering = ["-paid_date", "-created_at"]
+        indexes = [
+            models.Index(fields=["payable"]),
+            models.Index(fields=["paid_date"]),
+        ]
+
+    def __str__(self):
+        return f"{self.payable} - ¥{self.amount:,.0f} ({self.paid_date})"
+
+
 class PurchaseOrder(models.Model):
     client_name = models.CharField(max_length=255, verbose_name="クライアント名")
     file = models.FileField(upload_to='purchase_orders/%Y/%m/', verbose_name="注文書ファイル")
@@ -464,3 +651,139 @@ class BusinessCard(models.Model):
 
     def __str__(self):
         return f"{self.company_name} - {self.name}"
+
+
+class SalesProject(models.Model):
+    """案件マスタ"""
+    company_name = models.CharField(max_length=100, verbose_name="発注元会社名")
+    title = models.CharField(max_length=200, verbose_name="案件名")
+    required_skills = models.TextField(blank=True, default="", verbose_name="必要スキル")
+    budget_range = models.CharField(max_length=100, blank=True, default="", verbose_name="単価帯")
+    memo = models.TextField(blank=True, default="", verbose_name="メモ")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="作成日時")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新日時")
+
+    class Meta:
+        verbose_name = "案件"
+        verbose_name_plural = "案件一覧"
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.company_name} / {self.title}"
+
+
+class SalesDeal(models.Model):
+    """商談カード（案件×人材のマッチング単位）"""
+    STATUS_CHOICES = [
+        ('received', '受信'),
+        ('working', '対応中'),
+        ('proposed', '提案済'),
+        ('waiting', '待ち'),
+        ('won', '成約'),
+        ('lost', '失注'),
+    ]
+
+    project = models.ForeignKey(
+        SalesProject, on_delete=models.CASCADE, related_name="deals", verbose_name="案件"
+    )
+    candidate_name = models.CharField(max_length=100, blank=True, default="", verbose_name="人材名")
+    candidate_entity = models.ForeignKey(
+        ContactEntity, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="sales_deals", verbose_name="既存人材"
+    )
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='received', verbose_name="ステータス")
+    owner = models.ForeignKey(
+        'auth.User', on_delete=models.SET_NULL, null=True, blank=True, verbose_name="担当者"
+    )
+    assignment = models.ForeignKey(
+        Assignment, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="sales_deals", verbose_name="アサインメント"
+    )
+    memo = models.TextField(blank=True, default="", verbose_name="メモ")
+    last_action_at = models.DateTimeField(null=True, blank=True, verbose_name="最終アクション日時")
+    next_action_due = models.DateField(null=True, blank=True, verbose_name="次回アクション期日")
+    display_order = models.IntegerField(default=0, verbose_name="表示順")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="作成日時")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新日時")
+
+    class Meta:
+        verbose_name = "商談"
+        verbose_name_plural = "商談一覧"
+        ordering = ['display_order', '-created_at']
+
+    def __str__(self):
+        return f"{self.project.title} × {self.display_candidate_name}"
+
+    @property
+    def display_candidate_name(self):
+        if self.candidate_entity:
+            return self.candidate_entity.name
+        return self.candidate_name or "人材未定"
+
+    @property
+    def stagnation_days(self):
+        from django.utils import timezone
+        ref = self.last_action_at or self.created_at
+        return (timezone.now() - ref).days
+
+    @property
+    def is_stagnant(self):
+        return self.stagnation_days >= 7
+
+    @property
+    def is_overdue(self):
+        from datetime import date
+        return self.next_action_due is not None and self.next_action_due < date.today()
+
+
+class SalesAction(models.Model):
+    """アクション記録"""
+    ACTION_TYPE_CHOICES = [
+        ('電話', '電話'),
+        ('メール', 'メール'),
+        ('メッセージ', 'メッセージ'),
+        ('面談', '面談'),
+        ('書類', '書類'),
+        ('面接', '面接'),
+        ('提案', '提案'),
+        ('その他', 'その他'),
+    ]
+
+    deal = models.ForeignKey(
+        SalesDeal, on_delete=models.CASCADE, related_name="actions", verbose_name="商談"
+    )
+    actor = models.ForeignKey(
+        'auth.User', on_delete=models.SET_NULL, null=True, verbose_name="実行者"
+    )
+    action_type = models.CharField(max_length=20, choices=ACTION_TYPE_CHOICES, verbose_name="種別")
+    note = models.TextField(blank=True, default="", verbose_name="内容")
+    acted_at = models.DateTimeField(verbose_name="実行日時")
+
+    class Meta:
+        verbose_name = "アクション記録"
+        verbose_name_plural = "アクション記録一覧"
+        ordering = ['-acted_at']
+
+    def __str__(self):
+        return f"{self.action_type} - {self.deal}"
+
+
+class SalesStatusChange(models.Model):
+    """ステータス変更履歴"""
+    deal = models.ForeignKey(
+        SalesDeal, on_delete=models.CASCADE, related_name="status_changes", verbose_name="商談"
+    )
+    actor = models.ForeignKey(
+        'auth.User', on_delete=models.SET_NULL, null=True, verbose_name="変更者"
+    )
+    from_status = models.CharField(max_length=10, verbose_name="変更前")
+    to_status = models.CharField(max_length=10, verbose_name="変更後")
+    changed_at = models.DateTimeField(auto_now_add=True, verbose_name="変更日時")
+
+    class Meta:
+        verbose_name = "ステータス変更履歴"
+        verbose_name_plural = "ステータス変更履歴一覧"
+        ordering = ['-changed_at']
+
+    def __str__(self):
+        return f"{self.deal}: {self.from_status} → {self.to_status}"

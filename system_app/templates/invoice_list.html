@@ -2,7 +2,7 @@
 {% block title %}請求管理{% endblock %}
 {% block content %}
 
-<div class="container mt-4">
+<div class="container-fluid">
   {% if messages %}
   {% for message in messages %}
   <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
@@ -12,26 +12,32 @@
   {% endfor %}
   {% endif %}
 
-  <!-- ヘッダ：月選択 + サマリー -->
-  <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
-    <div class="d-flex align-items-center gap-3">
-      <a href="?ym={{ prev_ym }}" class="btn btn-outline-secondary btn-sm">&lt;</a>
-      <h2 class="mb-0">{{ year }}年{{ month }}月 請求管理</h2>
-      <a href="?ym={{ next_ym }}" class="btn btn-outline-secondary btn-sm">&gt;</a>
+  <!-- SF Page Header -->
+  <div class="sf-page-header">
+    <div class="sf-title-group">
+      <div class="sf-icon"><i class="bi bi-receipt"></i></div>
+      <div>
+        <h2>{{ year }}年{{ month }}月 請求管理</h2>
+        <div class="sf-subtitle">
+          <span class="sf-month-nav">
+            <a href="?ym={{ prev_ym }}">&lt;</a>
+            <a href="?ym={{ next_ym }}">&gt;</a>
+          </span>
+        </div>
+      </div>
     </div>
-    <div class="d-flex align-items-center gap-3">
-      <span class="text-muted">
-        送付済: <strong class="text-success">{{ sent_count }}件</strong> / 全{{ total_count }}件
+    <div>
+      <span style="font-size:.8rem;color:var(--sf-text-muted)">
+        送付済: <strong style="color:var(--sf-success)">{{ sent_count }}件</strong> / 全{{ total_count }}件
       </span>
     </div>
   </div>
 
-  <!-- 請求書一覧 -->
   {% if invoices %}
-  <div class="card shadow-sm">
+  <div class="sf-section">
     <div class="table-responsive">
-      <table class="table table-hover align-middle mb-0">
-        <thead class="table-dark">
+      <table class="sf-table">
+        <thead>
           <tr>
             <th>ワーカー</th>
             <th>案件</th>
@@ -45,7 +51,7 @@
         <tbody>
           {% for inv in invoices %}
           <tr>
-            <td>{{ inv.assignment.worker_entity.name|default:"―" }}</td>
+            <td class="fw-semibold">{{ inv.assignment.worker_entity.name|default:"―" }}</td>
             <td>{{ inv.assignment.project_name|default:"―" }}</td>
             <td>{{ inv.assignment.upstream_entity.name|default:"―" }}</td>
             <td class="text-center">
@@ -60,10 +66,10 @@
             <td class="text-end fw-bold">{{ inv.total_amount|floatformat:0 }} 円</td>
             <td>{{ inv.updated_at|date:"Y/m/d H:i" }}</td>
             <td class="text-center">
-              <a href="{% url 'invoice_detail' inv.id %}" class="btn btn-sm btn-outline-primary me-1">
+              <a href="{% url 'invoice_detail' inv.id %}" class="btn btn-sf-outline btn-sm me-1" style="padding:.2rem .5rem;font-size:.75rem">
                 <i class="bi bi-pencil-square"></i> 詳細
               </a>
-              <a href="{% url 'invoice_export_xlsx' inv.id %}" class="btn btn-sm btn-outline-success">
+              <a href="{% url 'invoice_export_xlsx' inv.id %}" class="btn btn-sm me-1" style="padding:.2rem .5rem;font-size:.75rem;background:var(--sf-success);color:#fff">
                 <i class="bi bi-file-earmark-excel"></i> Excel
               </a>
             </td>
@@ -74,8 +80,11 @@
     </div>
   </div>
   {% else %}
-  <div class="alert alert-info">
-    {{ year }}年{{ month }}月の請求書はありません。<a href="{% url 'timesheet_dashboard' %}?ym={{ ym }}">勤務表回収</a>から請求書を生成してください。
+  <div class="sf-section">
+    <div class="sf-section-body text-center py-4" style="color:var(--sf-text-muted)">
+      {{ year }}年{{ month }}月の請求書はありません。
+      <a href="{% url 'timesheet_dashboard' %}?ym={{ ym }}" style="color:var(--sf-blue)">勤務表回収</a>から請求書を生成してください。
+    </div>
   </div>
   {% endif %}
 </div>

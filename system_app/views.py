@@ -1,9 +1,10 @@
 # system_app/views.py
+import json
 import os
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
-from .models import MonthlyProcess, TaskStatus, Freelancer, PurchaseOrder, BusinessPartner, BusinessCard, Assignment, ServiceContract, ContactEntity, ContactEmail, Invoice, InvoiceLine, Timesheet
-from .forms import FreelancerForm, TaskStatusForm, BusinessPartnerForm, ContactEntityForm
+from .models import MonthlyProcess, TaskStatus, Freelancer, PurchaseOrder, BusinessPartner, BusinessCard, Assignment, ServiceContract, ContactEntity, ContactEmail, Invoice, InvoiceLine, Timesheet, InvoicePayment, Payable, PayablePayment, SalesProject, SalesDeal, SalesAction, SalesStatusChange
+from .forms import FreelancerForm, TaskStatusForm, BusinessPartnerForm, ContactEntityForm, SalesDealCreateForm, SalesDealEditForm, SalesActionForm
 from django.utils import timezone
 
 from django.contrib.auth.models import User
@@ -14,12 +15,71 @@ from .forms import UserEditForm
 from django.urls import reverse
 from django.db.models import Q
 
-from django.http import FileResponse, Http404
+from django.http import FileResponse, Http404, JsonResponse
+from django.views.decorators.http import require_POST
 #from .services.email_service import search_and_sync_emails # 検索用サービス
 from .services.email_service import search_and_save_to_vps
 
 from django.http import HttpResponseForbidden
+from .models import EntityContactPerson
 
+
+@login_required
+def contact_entity_search(request):
+    """JSON API: ContactEntity 検索（重複除外済み）"""
+    kind = request.GET.get('kind', '').upper()
+    if kind not in ('PERSON', 'COMPANY'):
+        return JsonResponse({'error': 'kind must be PERSON or COMPANY'}, status=400)
+
+    entities = ContactEntity.objects.filter(kind=kind).order_by('name', 'id')
+
+    if kind == 'PERSON':
+        seen = set()
+        data = []
+        for e in entities:
+            key = (e.name, e.worker_type or '', e.email or '')
+            if key in seen:
+                continue
+            seen.add(key)
+            data.append({
+                'id': e.id,
+                'name': e.name,
+                'worker_type': e.worker_type or '',
+                'email': e.email or '',
+                'phone': e.phone or '',
+            })
+    else:
+        seen = set()
+        data = []
+        for e in entities:
+            key = (e.name, e.company_phone or '', e.address or '')
+            if key in seen:
+                continue
+            seen.add(key)
+            contact_people = []
+            for cp in e.contact_people.all():
+                emails = [
+                    {'email': ce.email, 'description': ce.description}
+                    for ce in cp.extra_emails.all()
+                ]
+                contact_people.append({
+                    'id': cp.id,
+                    'name': cp.name,
+                    'phone': cp.phone or '',
+                    'line_available': cp.line_available,
+                    'emails': emails,
+                })
+            data.append({
+                'id': e.id,
+                'name': e.name,
+                'address': e.address or '',
+                'mailing_address': e.mailing_address or '',
+                'company_phone': e.company_phone or '',
+                'has_invoice_registration': e.has_invoice_registration,
+                'contact_people': contact_people,
+            })
+
+    return JsonResponse(data, safe=False)
 
 
 def _save_contact_emails(request, prefix, contact_person):
@@ -40,9 +100,178 @@ def _save_contact_emails(request, prefix, contact_person):
 def index(request):
     return render(request, 'index.html')
 
-@login_required  # ログインしていない人がアクセスしたらログイン画面に飛ばす設定
+@login_required
 def menu(request):
-    return render(request, 'menu.html')
+    return redirect('dashboard')
+
+
+def _get_trend_data(end_ym, months=6):
+    """end_ym を最終月として過去 months ヶ月分の売上/支払/粗利を返す"""
+    from django.db.models import Sum as _S
+    from django.db.models.functions import Coalesce as _C
+    from django.db.models import Value, DecimalField as _DF
+
+    y, m = int(end_ym[:4]), int(end_ym[4:])
+    result = []
+    for _ in range(months):
+        ym = f"{y}{m:02d}"
+        rev = (
+            Invoice.objects.filter(billing_ym=ym).exclude(status='cancelled')
+            .aggregate(t=_C(_S('total_amount'), Value(0), output_field=_DF()))['t']
+        )
+        cost = (
+            Payable.objects.filter(billing_ym=ym).exclude(status='cancelled')
+            .aggregate(t=_C(_S('total_amount'), Value(0), output_field=_DF()))['t']
+        )
+        profit = rev - cost
+        result.append({
+            'ym': ym,
+            'label': f"{m}月",
+            'revenue': int(rev),
+            'cost': int(cost),
+            'profit': int(profit),
+        })
+        m -= 1
+        if m == 0:
+            m = 12
+            y -= 1
+
+    result.reverse()
+    return result
+
+
+@login_required
+def dashboard(request):
+    import json
+    from datetime import date, timedelta
+    from django.db.models import Q
+
+    today = date.today()
+    ym = request.GET.get('ym', '')
+    if not ym or len(ym) != 6:
+        ym = today.strftime('%Y%m')
+
+    year = int(ym[:4])
+    month = int(ym[4:6])
+
+    if month == 1:
+        prev_ym = f"{year - 1}12"
+    else:
+        prev_ym = f"{year}{month - 1:02d}"
+    if month == 12:
+        next_ym = f"{year + 1}01"
+    else:
+        next_ym = f"{year}{month + 1:02d}"
+
+    # --- (1) 勤務表：未回収 ---
+    active_assignment_ids = set(
+        Assignment.objects.filter(is_active=True).values_list('id', flat=True)
+    )
+    submitted_ids = set(
+        Timesheet.objects.filter(billing_ym=ym).values_list('assignment_id', flat=True)
+    )
+    ts_pending_count = len(active_assignment_ids - submitted_ids)
+
+    # --- (2) 請求：未送付 ---
+    inv_unsent_count = Invoice.objects.filter(
+        billing_ym=ym, status__in=['draft', 'final']
+    ).count()
+
+    # --- (3) 請求：入金待ち ---
+    inv_sent_count = Invoice.objects.filter(
+        billing_ym=ym, status='sent'
+    ).count()
+
+    # --- (3b) 入金：今月支払期日で未入金 ---
+    from django.db.models import Sum as _Sum
+    from django.db.models.functions import Coalesce as _Coalesce
+    ar_unpaid_count = (
+        Invoice.objects
+        .filter(status='sent', due_date__year=year, due_date__month=month)
+        .annotate(
+            _paid=_Coalesce(_Sum('payments__amount'), Value(0), output_field=DjDecimalField())
+        )
+        .filter(_paid__lt=F('total_amount'))
+        .count()
+    )
+
+    # --- (4)(5) 契約：30日/60日以内に終了 ---
+    contracts_end_30 = ServiceContract.objects.filter(
+        valid_to__gte=today,
+        valid_to__lte=today + timedelta(days=30),
+    ).count()
+    contracts_end_60 = ServiceContract.objects.filter(
+        valid_to__gte=today,
+        valid_to__lte=today + timedelta(days=60),
+    ).count()
+
+    # --- (6) 営業：停滞商談 ---
+    from datetime import datetime
+    stagnant_threshold = timezone.now() - timedelta(days=7)
+    sales_stagnant_count = SalesDeal.objects.filter(
+        status__in=['received', 'working', 'proposed', 'waiting'],
+    ).filter(
+        Q(last_action_at__isnull=True, created_at__lt=stagnant_threshold) |
+        Q(last_action_at__lt=stagnant_threshold)
+    ).count()
+
+    # --- (7) キャッシュフロー KPI ---
+    from django.db.models import Sum as _Sum2
+    monthly_revenue = (
+        Invoice.objects
+        .filter(billing_ym=ym)
+        .exclude(status='cancelled')
+        .aggregate(total=_Coalesce(_Sum2('total_amount'), Value(0), output_field=DjDecimalField()))
+    )['total']
+
+    monthly_cost = (
+        Payable.objects
+        .filter(billing_ym=ym)
+        .exclude(status='cancelled')
+        .aggregate(total=_Coalesce(_Sum2('total_amount'), Value(0), output_field=DjDecimalField()))
+    )['total']
+
+    monthly_gross_profit = monthly_revenue - monthly_cost
+    monthly_gross_profit_rate = (
+        round(monthly_gross_profit / monthly_revenue * 100, 1)
+        if monthly_revenue else 0
+    )
+
+    ap_unpaid_count = (
+        Payable.objects
+        .exclude(status='cancelled')
+        .filter(due_date__year=year, due_date__month=month)
+        .annotate(
+            _paid=_Coalesce(_Sum2('payments__amount'), Value(0), output_field=DjDecimalField())
+        )
+        .filter(_paid__lt=F('total_amount'))
+        .count()
+    )
+
+    # --- 6ヶ月トレンドデータ ---
+    trend_data = _get_trend_data(ym, months=6)
+
+    return render(request, 'dashboard.html', {
+        'ym': ym,
+        'year': year,
+        'month': month,
+        'prev_ym': prev_ym,
+        'next_ym': next_ym,
+        'ts_pending_count': ts_pending_count,
+        'inv_unsent_count': inv_unsent_count,
+        'inv_sent_count': inv_sent_count,
+        'ar_unpaid_count': ar_unpaid_count,
+        'contracts_end_30': contracts_end_30,
+        'contracts_end_60': contracts_end_60,
+        'sales_stagnant_count': sales_stagnant_count,
+        'monthly_revenue': monthly_revenue,
+        'monthly_cost': monthly_cost,
+        'monthly_gross_profit': monthly_gross_profit,
+        'monthly_gross_profit_rate': monthly_gross_profit_rate,
+        'ap_unpaid_count': ap_unpaid_count,
+        'trend_data_json': json.dumps(trend_data),
+    })
+
 
 # ユーザー一覧
 def user_list(request):
@@ -105,7 +334,9 @@ def party_list(request):
     show_inactive = request.GET.get("show_inactive", "") == "1"
 
     assignments = Assignment.objects.select_related(
-        'worker_entity', 'sales_owner_entity'
+        'worker_entity', 'sales_owner_entity',
+        'upstream_entity', 'upstream_contact_person',
+        'downstream_entity', 'downstream_contact_person',
     ).prefetch_related('contracts').all()
 
     # デフォルトは稼働中のみ表示
@@ -129,8 +360,31 @@ def party_list(request):
             Q(valid_from__isnull=True) | Q(valid_from__lte=today)
         ).first()
 
-        # 単価
+        # 契約情報
         unit_price = current_contract.unit_price if current_contract else None
+        contract_from = current_contract.valid_from if current_contract else None
+        contract_to = current_contract.valid_to if current_contract else None
+        is_fixed_fee = current_contract.is_fixed_fee if current_contract else False
+        lower_limit = current_contract.lower_limit_hour if current_contract else None
+        upper_limit = current_contract.upper_limit_hours if current_contract else None
+
+        # 上位（発注元）
+        upstream_name = ""
+        if a.upstream_entity and a.upstream_entity != a.worker_entity:
+            upstream_name = a.upstream_entity.name
+        upstream_contact = ""
+        if a.upstream_contact_person:
+            upstream_contact = a.upstream_contact_person.name
+
+        # 下位（所属会社）
+        downstream_name = ""
+        if a.downstream_entity and a.downstream_entity != a.worker_entity:
+            downstream_name = a.downstream_entity.name
+
+        # 契約終了間近判定
+        contract_ending_soon = False
+        if contract_to and (contract_to - today).days <= 30:
+            contract_ending_soon = True
 
         rows.append({
             "id": a.id,
@@ -139,8 +393,16 @@ def party_list(request):
             "sales_owner": a.sales_owner_entity.name if a.sales_owner_entity else "-",
             "is_active": a.is_active,
             "unit_price": unit_price,
+            "is_fixed_fee": is_fixed_fee,
+            "lower_limit": lower_limit,
+            "upper_limit": upper_limit,
             "project_name": a.project_name or "-",
-            "order_period_end_ym": a.order_period_end_ym,
+            "contract_from": contract_from,
+            "contract_to": contract_to,
+            "contract_ending_soon": contract_ending_soon,
+            "upstream_name": upstream_name,
+            "upstream_contact": upstream_contact,
+            "downstream_name": downstream_name,
         })
 
     # worker_type の選択肢を取得
@@ -160,26 +422,43 @@ def party_list(request):
 @login_required
 def contact_entity_create(request):
     """新規人材+アサインメント+契約 一括登録"""
-    from .models import EntityContactPerson
 
     if request.method == 'POST':
         form = ContactEntityForm(request.POST)
         if form.is_valid():
             data = form.cleaned_data
 
-            # 1. 人材（worker）作成
-            worker = ContactEntity.objects.create(
-                kind='PERSON',
-                name=data['name'],
-                worker_type=data['worker_type'],
-                email=data['email'] or None,
-                phone=data['phone'] or None,
-            )
+            # 1. 人材（worker）: 既存 or 新規
+            existing_worker_id = request.POST.get('existing_worker_id')
+            if existing_worker_id:
+                worker = get_object_or_404(ContactEntity, pk=existing_worker_id, kind='PERSON')
+            else:
+                worker = ContactEntity.objects.create(
+                    kind='PERSON',
+                    name=data['name'],
+                    worker_type=data['worker_type'],
+                    email=data['email'] or None,
+                    phone=data['phone'] or None,
+                )
 
-            # 2. 上位会社・担当者作成（任意）
+            # 2. 上位会社・担当者: 既存 or 新規
             upstream_entity = None
             upstream_contact = None
-            if data.get('upstream_company_name'):
+            existing_upstream_id = request.POST.get('existing_upstream_id')
+            if existing_upstream_id:
+                upstream_entity = get_object_or_404(ContactEntity, pk=existing_upstream_id, kind='COMPANY')
+                existing_upstream_contact_id = request.POST.get('existing_upstream_contact_id')
+                if existing_upstream_contact_id:
+                    upstream_contact = get_object_or_404(EntityContactPerson, pk=existing_upstream_contact_id)
+                elif data.get('upstream_contact_name'):
+                    upstream_contact = EntityContactPerson.objects.create(
+                        corporate_entity=upstream_entity,
+                        name=data['upstream_contact_name'],
+                        phone=data.get('upstream_contact_phone') or None,
+                        line_available=data.get('upstream_line_available', False),
+                    )
+                    _save_contact_emails(request, 'upstream', upstream_contact)
+            elif data.get('upstream_company_name'):
                 upstream_entity = ContactEntity.objects.create(
                     kind='COMPANY',
                     name=data['upstream_company_name'],
@@ -196,10 +475,24 @@ def contact_entity_create(request):
                     )
                     _save_contact_emails(request, 'upstream', upstream_contact)
 
-            # 3. 下位会社・担当者作成（任意）
+            # 3. 下位会社・担当者: 既存 or 新規
             downstream_entity = None
             downstream_contact = None
-            if data.get('downstream_company_name'):
+            existing_downstream_id = request.POST.get('existing_downstream_id')
+            if existing_downstream_id:
+                downstream_entity = get_object_or_404(ContactEntity, pk=existing_downstream_id, kind='COMPANY')
+                existing_downstream_contact_id = request.POST.get('existing_downstream_contact_id')
+                if existing_downstream_contact_id:
+                    downstream_contact = get_object_or_404(EntityContactPerson, pk=existing_downstream_contact_id)
+                elif data.get('downstream_contact_name'):
+                    downstream_contact = EntityContactPerson.objects.create(
+                        corporate_entity=downstream_entity,
+                        name=data['downstream_contact_name'],
+                        phone=data.get('downstream_contact_phone') or None,
+                        line_available=data.get('downstream_line_available', False),
+                    )
+                    _save_contact_emails(request, 'downstream', downstream_contact)
+            elif data.get('downstream_company_name'):
                 downstream_entity = ContactEntity.objects.create(
                     kind='COMPANY',
                     name=data['downstream_company_name'],
@@ -235,8 +528,6 @@ def contact_entity_create(request):
                 downstream_entity=downstream_entity or worker,
                 downstream_contact_person=downstream_contact,
                 project_name=data.get('project_name') or None,
-                order_period_start_ym=data.get('order_period_start_ym') or None,
-                order_period_end_ym=data.get('order_period_end_ym') or None,
                 notes=data.get('notes') or None,
                 is_active=data.get('is_active', True),
             )
@@ -282,6 +573,66 @@ def contact_entity_create(request):
 
 
 @login_required
+@require_POST
+def assignment_extend_contract(request, pk):
+    """契約期間をインライン延長するAPIエンドポイント"""
+    import json
+    import calendar
+    from datetime import date
+
+    assignment = get_object_or_404(Assignment, pk=pk)
+
+    try:
+        data = json.loads(request.body)
+    except (json.JSONDecodeError, ValueError):
+        return JsonResponse({'error': 'Invalid JSON'}, status=400)
+
+    months = data.get('months')
+    if months not in (1, 3, 6):
+        return JsonResponse({'error': 'months must be 1, 3, or 6'}, status=400)
+
+    today = date.today()
+    contract = assignment.contracts.filter(
+        Q(valid_to__isnull=False),
+        Q(valid_from__isnull=True) | Q(valid_from__lte=today),
+        Q(valid_to__gte=today),
+    ).first()
+
+    if not contract:
+        # valid_to が NULL（無期限）か、有効な契約が見つからない
+        has_open = assignment.contracts.filter(valid_to__isnull=True).exists()
+        if has_open:
+            return JsonResponse({'error': '既に無期限の契約です'}, status=400)
+        return JsonResponse({'error': '有効な契約が見つかりません'}, status=404)
+
+    # valid_to に months 分を加算（月末調整）
+    old_to = contract.valid_to
+    new_month = old_to.month + months
+    new_year = old_to.year + (new_month - 1) // 12
+    new_month = (new_month - 1) % 12 + 1
+    new_day = min(old_to.day, calendar.monthrange(new_year, new_month)[1])
+    new_valid_to = date(new_year, new_month, new_day)
+
+    contract.valid_to = new_valid_to
+    contract.save(update_fields=['valid_to'])
+
+    return JsonResponse({
+        'ok': True,
+        'new_valid_to': new_valid_to.isoformat(),
+    })
+
+
+@login_required
+@require_POST
+def assignment_toggle_active(request, pk):
+    """稼働中フラグをトグルする"""
+    assignment = get_object_or_404(Assignment, pk=pk)
+    assignment.is_active = not assignment.is_active
+    assignment.save(update_fields=['is_active'])
+    return redirect('assignment_detail', pk=pk)
+
+
+@login_required
 def assignment_detail(request, pk):
     """アサインメント詳細"""
     from datetime import date
@@ -312,7 +663,6 @@ def assignment_detail(request, pk):
 @login_required
 def assignment_edit(request, pk):
     """アサインメント編集"""
-    from .models import EntityContactPerson
     from datetime import date
     today = date.today()
 
@@ -429,8 +779,6 @@ def assignment_edit(request, pk):
 
             # 5. Assignment更新
             assignment.project_name = data.get('project_name') or None
-            assignment.order_period_start_ym = data.get('order_period_start_ym') or None
-            assignment.order_period_end_ym = data.get('order_period_end_ym') or None
             assignment.notes = data.get('notes') or None
             assignment.is_active = data.get('is_active', True)
             assignment.save()
@@ -483,8 +831,6 @@ def assignment_edit(request, pk):
             'phone': assignment.worker_entity.phone if assignment.worker_entity else '',
             'sales_owner_name': assignment.sales_owner_entity.name if assignment.sales_owner_entity and assignment.sales_owner_entity != assignment.worker_entity else '',
             'project_name': assignment.project_name or '',
-            'order_period_start_ym': assignment.order_period_start_ym or '',
-            'order_period_end_ym': assignment.order_period_end_ym or '',
             'notes': assignment.notes or '',
             'is_active': assignment.is_active,
         }
@@ -923,6 +1269,9 @@ def timesheet_upload(request):
         else:
             from system_app.services.timesheet_parsers.xlsx_generic import parse_timesheet_xlsx_generic
             parsed = parse_timesheet_xlsx_generic(tmp_path)
+        # AI フォールバック（候補から最適値を選択）
+        from system_app.services.timesheet_parsers.ai_fallback import enhance_parsed_result_with_ai
+        parsed = enhance_parsed_result_with_ai(parsed)
     except Exception as e:
         messages.warning(request, f'パースに失敗しました（ファイルは保存済み）: {e}')
     finally:
@@ -932,15 +1281,53 @@ def timesheet_upload(request):
     travel_amount = None
     parse_confidence = {}
 
+    is_pdf = suffix.lower() == '.pdf'
+
     if parsed:
         ah = parsed.get("actual_hours")
         if ah and ah.get("value") is not None:
             actual_hours = Decimal(str(ah["value"]))
-            parse_confidence["actual_hours"] = ah.get("confidence")
+            pc_entry = {
+                "confidence": ah.get("confidence"),
+                "evidence": ah.get("evidence", ah.get("source", "")),
+            }
+            if is_pdf:
+                pc_entry["page_number"] = ah.get("page_number")
+                pc_entry["bbox"] = ah.get("bbox")
+            else:
+                pc_entry["cell"] = ah.get("cell")
+                pc_entry["sheet"] = ah.get("sheet")
+            parse_confidence["actual_hours"] = pc_entry
         ta = parsed.get("travel_amount")
         if ta and ta.get("value") is not None:
             travel_amount = Decimal(str(ta["value"]))
-            parse_confidence["travel_amount"] = ta.get("confidence")
+            pc_entry = {
+                "confidence": ta.get("confidence"),
+                "evidence": ta.get("evidence", ta.get("source", "")),
+            }
+            if is_pdf:
+                pc_entry["page_number"] = ta.get("page_number")
+                pc_entry["bbox"] = ta.get("bbox")
+            else:
+                pc_entry["cell"] = ta.get("cell")
+                pc_entry["sheet"] = ta.get("sheet")
+            parse_confidence["travel_amount"] = pc_entry
+        bym = parsed.get("billing_ym")
+        if bym and bym.get("value") is not None:
+            pc_entry = {
+                "confidence": bym.get("confidence"),
+                "evidence": bym.get("evidence", bym.get("source", "")),
+            }
+            if is_pdf:
+                pc_entry["page_number"] = bym.get("page_number")
+                pc_entry["bbox"] = bym.get("bbox")
+            else:
+                pc_entry["cell"] = bym.get("cell")
+                pc_entry["sheet"] = bym.get("sheet")
+            parse_confidence["billing_ym"] = pc_entry
+
+        if parsed.get("parse_meta"):
+            parse_confidence["parse_meta"] = parsed["parse_meta"]
 
     # ファイル名変換: {ym}_{worker_name}_{project_name}.{ext}
     worker_name = assignment.worker_entity.name if assignment.worker_entity else "unknown"
@@ -972,6 +1359,7 @@ def timesheet_upload(request):
 
 @login_required
 def timesheet_detail(request, pk):
+    import os
     from decimal import Decimal
     from django.contrib import messages
 
@@ -994,7 +1382,73 @@ def timesheet_detail(request, pk):
         messages.success(request, '勤務表情報を更新しました。')
         return redirect('timesheet_detail', pk=pk)
 
-    return render(request, 'timesheet_detail.html', {'ts': ts})
+    # Excel HTML 生成
+    excel_sheets = None
+    is_excel = False
+    is_pdf = False
+    pdf_url = None
+    pdf_highlights = []
+
+    if ts.file:
+        ext = os.path.splitext(ts.file.name)[1].lower()
+        is_excel = ext in ('.xlsx', '.xls')
+        is_pdf = ext == '.pdf'
+
+        if is_excel:
+            try:
+                from system_app.services.excel_renderer import render_excel_to_html
+
+                # parse_confidence からハイライト対象セルを抽出（実稼働時間・交通費のみ）
+                highlight_cells = {}
+                pc = ts.parse_confidence or {}
+                for key in ('actual_hours', 'travel_amount'):
+                    meta = pc.get(key)
+                    if not meta or not isinstance(meta, dict):
+                        continue
+                    cell_ref = meta.get('cell')
+                    sheet_name = meta.get('sheet')
+                    if cell_ref and sheet_name:
+                        highlight_cells.setdefault(sheet_name, []).append(cell_ref)
+
+                excel_sheets = render_excel_to_html(ts.file.path, highlight_cells)
+            except Exception:
+                excel_sheets = None
+
+        elif is_pdf:
+            pdf_url = reverse('timesheet_view_inline', args=[ts.pk])
+            pc = ts.parse_confidence or {}
+            for key in ('actual_hours', 'travel_amount'):
+                meta = pc.get(key)
+                if isinstance(meta, dict) and meta.get('bbox') and meta.get('page_number') is not None:
+                    pdf_highlights.append({
+                        'page': meta['page_number'],
+                        'bbox': meta['bbox'],
+                        'label': key,
+                    })
+
+    # parse_confidence の表示用データ（新旧形式に対応）
+    pc = ts.parse_confidence or {}
+    confidence_display = {}
+    for key in ('actual_hours', 'travel_amount', 'billing_ym'):
+        meta = pc.get(key)
+        if meta is None:
+            continue
+        if isinstance(meta, dict):
+            confidence_display[key] = meta
+        else:
+            # 旧形式: 数値のみ
+            confidence_display[key] = {"confidence": meta}
+
+    import json
+    return render(request, 'timesheet_detail.html', {
+        'ts': ts,
+        'excel_sheets': excel_sheets,
+        'is_excel': is_excel,
+        'is_pdf': is_pdf,
+        'pdf_url': pdf_url,
+        'pdf_highlights_json': json.dumps(pdf_highlights),
+        'confidence_display': confidence_display,
+    })
 
 
 @login_required
@@ -1007,6 +1461,14 @@ def timesheet_download(request, pk):
         as_attachment=True,
         filename=ts.original_filename or os.path.basename(ts.file.name),
     )
+
+
+@login_required
+def timesheet_view_inline(request, pk):
+    ts = get_object_or_404(Timesheet, pk=pk)
+    if not ts.file:
+        raise Http404
+    return FileResponse(open(ts.file.path, 'rb'), content_type='application/pdf')
 
 
 @login_required
@@ -1048,6 +1510,22 @@ def timesheet_generate_invoice(request, pk):
     except Exception as e:
         messages.error(request, f'請求書生成エラー: {e}')
         return redirect('timesheet_detail', pk=pk)
+
+    # --- 買掛（下位支払い）の自動生成 ---
+    try:
+        from system_app.services.payable_service import create_or_update_payable_from_parsed
+        payable = create_or_update_payable_from_parsed(
+            assignment_id=ts.assignment_id,
+            parsed=parsed,
+            fallback_travel_amount=Decimal("0"),
+        )
+        if payable:
+            messages.success(
+                request,
+                f'買掛ドラフトを作成しました（{payable.billing_ym} / 合計 {payable.total_amount:,.0f}円）'
+            )
+    except Exception as e:
+        messages.warning(request, f'買掛の自動生成に失敗しました: {e}')
 
     return redirect(f"{reverse('timesheet_dashboard')}?ym={ts.billing_ym}")
 
@@ -1372,3 +1850,661 @@ def invoice_export_xlsx(request, invoice_id):
         as_attachment=True,
         filename=result["file_name"],
     )
+
+
+# =====================================================================
+# 入金管理（AR: Accounts Receivable）
+# =====================================================================
+
+from django.db.models import Sum, Value, DecimalField as DjDecimalField, F
+from django.db.models.functions import Coalesce
+from decimal import Decimal
+from datetime import date
+from django.db import transaction
+
+
+@login_required
+def ar_list(request):
+    """入金管理 メイン画面（月ベース）"""
+    today = date.today()
+
+    # --- 月パラメータ（YYYYMM形式、勤務表と統一） ---
+    ym = request.GET.get("ym", "")
+    if not ym or len(ym) != 6:
+        ym = today.strftime("%Y%m")
+
+    year = int(ym[:4])
+    month = int(ym[4:6])
+
+    # 前月・翌月
+    if month == 1:
+        prev_ym = f"{year - 1}12"
+    else:
+        prev_ym = f"{year}{month - 1:02d}"
+    if month == 12:
+        next_ym = f"{year + 1}01"
+    else:
+        next_ym = f"{year}{month + 1:02d}"
+
+    # --- フィルタパラメータ ---
+    customer_id = request.GET.get("customer", "")
+    status_filter = request.GET.get("status", "")
+    selected_invoice_id = request.GET.get("selected", "")
+
+    # --- 請求書一覧 (sent のみ、当月 due_date) ---
+    qs = (
+        Invoice.objects
+        .filter(status="sent", due_date__year=year, due_date__month=month)
+        .select_related("assignment__upstream_entity", "assignment__worker_entity")
+        .annotate(
+            paid_sum=Coalesce(
+                Sum("payments__amount"),
+                Value(0),
+                output_field=DjDecimalField(),
+            )
+        )
+    )
+
+    # 取引先フィルタ
+    if customer_id:
+        qs = qs.filter(assignment__upstream_entity_id=customer_id)
+
+    # 状態フィルタ
+    if status_filter == "paid":
+        qs = qs.filter(paid_sum__gte=F("total_amount"))
+    elif status_filter == "partial":
+        qs = qs.filter(paid_sum__gt=0, paid_sum__lt=F("total_amount"))
+    elif status_filter == "unpaid":
+        qs = qs.filter(paid_sum=0)
+    elif status_filter == "overdue":
+        qs = qs.filter(paid_sum__lt=F("total_amount"), due_date__lt=today)
+
+    qs = qs.order_by("due_date", "id")
+
+    # --- 各行に remain / display_status を付与 + サマリ集計 ---
+    invoices = []
+    summary_total = Decimal("0")
+    summary_paid = Decimal("0")
+    summary_remain = Decimal("0")
+    count_paid = 0
+
+    for inv in qs:
+        paid = inv.paid_sum or Decimal("0")
+        remain = inv.total_amount - paid
+        if remain <= 0:
+            ds = "paid"
+            count_paid += 1
+        elif paid > 0:
+            ds = "partial"
+        else:
+            ds = "unpaid"
+        overdue = inv.due_date and inv.due_date < today and remain > 0
+        invoices.append({
+            "obj": inv,
+            "paid_sum": paid,
+            "remain": remain,
+            "display_status": ds,
+            "overdue": overdue,
+        })
+        summary_total += inv.total_amount
+        summary_paid += paid
+        summary_remain += max(remain, Decimal("0"))
+
+    # --- 選択中の請求書 ---
+    selected_invoice = None
+    payments = []
+    if selected_invoice_id:
+        try:
+            selected_invoice = (
+                Invoice.objects
+                .select_related("assignment__upstream_entity", "assignment__worker_entity")
+                .annotate(
+                    paid_sum=Coalesce(
+                        Sum("payments__amount"),
+                        Value(0),
+                        output_field=DjDecimalField(),
+                    )
+                )
+                .get(id=selected_invoice_id)
+            )
+            payments = selected_invoice.payments.select_related("created_by").all()
+        except Invoice.DoesNotExist:
+            pass
+
+    # --- 取引先リスト（フィルタ用） ---
+    customers = (
+        ContactEntity.objects
+        .filter(kind="COMPANY", assignments_as_upstream__invoices__status="sent")
+        .distinct()
+        .order_by("name")
+    )
+
+    # 選択中の請求書の残額を計算
+    remain_amount = Decimal("0")
+    if selected_invoice:
+        paid = selected_invoice.paid_sum or Decimal("0")
+        remain_amount = selected_invoice.total_amount - paid
+
+    ctx = {
+        "invoices": invoices,
+        "selected_invoice": selected_invoice,
+        "payments": payments,
+        "remain_amount": remain_amount,
+        "remain_amount_raw": int(remain_amount),
+        "ym": ym,
+        "year": year,
+        "month": month,
+        "prev_ym": prev_ym,
+        "next_ym": next_ym,
+        "filter_customer": customer_id,
+        "filter_status": status_filter,
+        "customers": customers,
+        "today": today,
+        "summary_total": summary_total,
+        "summary_paid": summary_paid,
+        "summary_remain": summary_remain,
+        "count_total": len(invoices),
+        "count_paid": count_paid,
+    }
+    return render(request, "ar_list.html", ctx)
+
+
+@login_required
+@transaction.atomic
+def ar_payment_create(request, invoice_id):
+    """入金登録（消込）"""
+    if request.method != "POST":
+        return redirect("ar_list")
+
+    invoice = get_object_or_404(Invoice, id=invoice_id)
+    ym = request.POST.get("ym", "")
+
+    paid_date_str = request.POST.get("paid_date", "")
+    amount_str = request.POST.get("amount", "").replace(",", "")
+    note = request.POST.get("note", "")
+
+    redirect_url = f"{reverse('ar_list')}?ym={ym}&selected={invoice_id}"
+
+    # バリデーション
+    errors = []
+    try:
+        paid_date = date.fromisoformat(paid_date_str)
+    except (ValueError, TypeError):
+        errors.append("入金日を正しく入力してください。")
+        paid_date = None
+
+    try:
+        amount = Decimal(amount_str)
+    except Exception:
+        errors.append("入金額を正しく入力してください。")
+        amount = None
+
+    if amount is not None and amount <= 0:
+        errors.append("入金額は0より大きい値を入力してください。")
+
+    if amount is not None and amount > 0:
+        paid_total = invoice.payments.aggregate(
+            total=Coalesce(Sum("amount"), Value(0), output_field=DjDecimalField())
+        )["total"]
+        remain = invoice.total_amount - paid_total
+        if amount > remain:
+            errors.append(f"入金額が残額（¥{remain:,.0f}）を超えています。")
+
+    if errors:
+        from django.contrib import messages
+        for e in errors:
+            messages.error(request, e)
+        return redirect(redirect_url)
+
+    InvoicePayment.objects.create(
+        invoice=invoice,
+        paid_date=paid_date,
+        amount=amount,
+        note=note,
+        created_by=request.user,
+    )
+
+    from django.contrib import messages
+    messages.success(request, f"¥{amount:,.0f} の入金を登録しました。")
+    return redirect(redirect_url)
+
+
+@login_required
+@transaction.atomic
+def ar_payment_delete(request, payment_id):
+    """入金削除（取消）"""
+    if request.method != "POST":
+        return redirect("ar_list")
+
+    payment = get_object_or_404(InvoicePayment, id=payment_id)
+    invoice_id = payment.invoice_id
+    ym = request.POST.get("ym", "")
+
+    from django.contrib import messages
+    messages.success(request, f"¥{payment.amount:,.0f} の入金を取り消しました。")
+    payment.delete()
+
+    return redirect(f"{reverse('ar_list')}?ym={ym}&selected={invoice_id}")
+
+
+# =====================================================================
+# 支払管理（AP: Accounts Payable）
+# =====================================================================
+
+
+@login_required
+def ap_list(request):
+    """支払管理 メイン画面（月ベース）"""
+    today = date.today()
+
+    ym = request.GET.get("ym", "")
+    if not ym or len(ym) != 6:
+        ym = today.strftime("%Y%m")
+
+    year = int(ym[:4])
+    month = int(ym[4:6])
+
+    if month == 1:
+        prev_ym = f"{year - 1}12"
+    else:
+        prev_ym = f"{year}{month - 1:02d}"
+    if month == 12:
+        next_ym = f"{year + 1}01"
+    else:
+        next_ym = f"{year}{month + 1:02d}"
+
+    # --- フィルタパラメータ ---
+    vendor_id = request.GET.get("vendor", "")
+    status_filter = request.GET.get("status", "")
+    selected_payable_id = request.GET.get("selected", "")
+
+    # --- 買掛一覧 (cancelled 以外、当月 due_date) ---
+    qs = (
+        Payable.objects
+        .exclude(status="cancelled")
+        .filter(due_date__year=year, due_date__month=month)
+        .select_related("assignment__downstream_entity", "assignment__worker_entity")
+        .annotate(
+            paid_sum=Coalesce(
+                Sum("payments__amount"),
+                Value(0),
+                output_field=DjDecimalField(),
+            )
+        )
+    )
+
+    if vendor_id:
+        qs = qs.filter(assignment__downstream_entity_id=vendor_id)
+
+    if status_filter == "paid":
+        qs = qs.filter(paid_sum__gte=F("total_amount"))
+    elif status_filter == "partial":
+        qs = qs.filter(paid_sum__gt=0, paid_sum__lt=F("total_amount"))
+    elif status_filter == "unpaid":
+        qs = qs.filter(paid_sum=0)
+    elif status_filter == "overdue":
+        qs = qs.filter(paid_sum__lt=F("total_amount"), due_date__lt=today)
+
+    qs = qs.order_by("due_date", "id")
+
+    # --- 各行に remain / display_status を付与 + サマリ集計 ---
+    payables = []
+    summary_total = Decimal("0")
+    summary_paid = Decimal("0")
+    summary_remain = Decimal("0")
+    count_paid = 0
+
+    for p in qs:
+        paid = p.paid_sum or Decimal("0")
+        remain = p.total_amount - paid
+        if remain <= 0:
+            ds = "paid"
+            count_paid += 1
+        elif paid > 0:
+            ds = "partial"
+        else:
+            ds = "unpaid"
+        overdue = p.due_date and p.due_date < today and remain > 0
+        payables.append({
+            "obj": p,
+            "paid_sum": paid,
+            "remain": remain,
+            "display_status": ds,
+            "overdue": overdue,
+        })
+        summary_total += p.total_amount
+        summary_paid += paid
+        summary_remain += max(remain, Decimal("0"))
+
+    # --- 選択中の買掛 ---
+    selected_payable = None
+    payments = []
+    if selected_payable_id:
+        try:
+            selected_payable = (
+                Payable.objects
+                .select_related("assignment__downstream_entity", "assignment__worker_entity")
+                .annotate(
+                    paid_sum=Coalesce(
+                        Sum("payments__amount"),
+                        Value(0),
+                        output_field=DjDecimalField(),
+                    )
+                )
+                .get(id=selected_payable_id)
+            )
+            payments = selected_payable.payments.select_related("created_by").all()
+        except Payable.DoesNotExist:
+            pass
+
+    # --- 支払先リスト（フィルタ用） ---
+    vendors = (
+        ContactEntity.objects
+        .filter(kind="COMPANY", assignments_as_downstream__payables__isnull=False)
+        .exclude(assignments_as_downstream__payables__status="cancelled")
+        .distinct()
+        .order_by("name")
+    )
+
+    remain_amount = Decimal("0")
+    if selected_payable:
+        paid = selected_payable.paid_sum or Decimal("0")
+        remain_amount = selected_payable.total_amount - paid
+
+    ctx = {
+        "payables": payables,
+        "selected_payable": selected_payable,
+        "payments": payments,
+        "remain_amount": remain_amount,
+        "remain_amount_raw": int(remain_amount),
+        "ym": ym,
+        "year": year,
+        "month": month,
+        "prev_ym": prev_ym,
+        "next_ym": next_ym,
+        "filter_vendor": vendor_id,
+        "filter_status": status_filter,
+        "vendors": vendors,
+        "today": today,
+        "summary_total": summary_total,
+        "summary_paid": summary_paid,
+        "summary_remain": summary_remain,
+        "count_total": len(payables),
+        "count_paid": count_paid,
+    }
+    return render(request, "ap_list.html", ctx)
+
+
+@login_required
+@transaction.atomic
+def ap_payment_create(request, payable_id):
+    """支払登録（消込）"""
+    if request.method != "POST":
+        return redirect("ap_list")
+
+    payable = get_object_or_404(Payable, id=payable_id)
+    ym = request.POST.get("ym", "")
+
+    paid_date_str = request.POST.get("paid_date", "")
+    amount_str = request.POST.get("amount", "").replace(",", "")
+    note = request.POST.get("note", "")
+
+    redirect_url = f"{reverse('ap_list')}?ym={ym}&selected={payable_id}"
+
+    errors = []
+    try:
+        paid_date = date.fromisoformat(paid_date_str)
+    except (ValueError, TypeError):
+        errors.append("支払日を正しく入力してください。")
+        paid_date = None
+
+    try:
+        amount = Decimal(amount_str)
+    except Exception:
+        errors.append("支払額を正しく入力してください。")
+        amount = None
+
+    if amount is not None and amount <= 0:
+        errors.append("支払額は0より大きい値を入力してください。")
+
+    if amount is not None and amount > 0:
+        paid_total = payable.payments.aggregate(
+            total=Coalesce(Sum("amount"), Value(0), output_field=DjDecimalField())
+        )["total"]
+        remain = payable.total_amount - paid_total
+        if amount > remain:
+            errors.append(f"支払額が残額（¥{remain:,.0f}）を超えています。")
+
+    if errors:
+        from django.contrib import messages
+        for e in errors:
+            messages.error(request, e)
+        return redirect(redirect_url)
+
+    PayablePayment.objects.create(
+        payable=payable,
+        paid_date=paid_date,
+        amount=amount,
+        note=note,
+        created_by=request.user,
+    )
+
+    from django.contrib import messages
+    messages.success(request, f"¥{amount:,.0f} の支払を登録しました。")
+    return redirect(redirect_url)
+
+
+@login_required
+@transaction.atomic
+def ap_payment_delete(request, payment_id):
+    """支払削除（取消）"""
+    if request.method != "POST":
+        return redirect("ap_list")
+
+    payment = get_object_or_404(PayablePayment, id=payment_id)
+    payable_id = payment.payable_id
+    ym = request.POST.get("ym", "")
+
+    from django.contrib import messages
+    messages.success(request, f"¥{payment.amount:,.0f} の支払を取り消しました。")
+    payment.delete()
+
+    return redirect(f"{reverse('ap_list')}?ym={ym}&selected={payable_id}")
+
+
+# =====================================================================
+# 見積書エクスポート
+# =====================================================================
+
+@login_required
+def estimate_export_xlsx(request, assignment_id):
+    """見積書Excelダウンロード"""
+    from django.http import FileResponse
+    from system_app.services.estimate_exporter import export_estimate_xlsx
+
+    contract_id = request.GET.get("contract_id")
+    result = export_estimate_xlsx(assignment_id, contract_id=contract_id)
+    return FileResponse(
+        open(result["file_path"], "rb"),
+        content_type=result["content_type"],
+        as_attachment=True,
+        filename=result["file_name"],
+    )
+
+
+# =====================================================================
+# 営業管理（カンバンボード）
+# =====================================================================
+
+@login_required
+def sales_board(request):
+    """カンバンボード表示"""
+    stagnant_only = request.GET.get('stagnant_only', '') == '1'
+
+    qs = SalesDeal.objects.select_related('owner', 'project', 'candidate_entity')
+
+    if stagnant_only:
+        from datetime import timedelta
+        threshold = timezone.now() - timedelta(days=7)
+        qs = qs.filter(
+            status__in=['received', 'working', 'proposed', 'waiting'],
+        ).filter(
+            Q(last_action_at__isnull=True, created_at__lt=threshold) |
+            Q(last_action_at__lt=threshold)
+        )
+
+    columns = [
+        ('received', '受信', '#64748b'),
+        ('working', '対応中', '#3b82f6'),
+        ('proposed', '提案済', '#8b5cf6'),
+        ('waiting', '待ち', '#f59e0b'),
+        ('won', '成約', '#10b981'),
+        ('lost', '失注', '#6b7280'),
+    ]
+
+    board = []
+    for status_val, label, color in columns:
+        cards = [c for c in qs if c.status == status_val]
+        cards.sort(key=lambda c: (c.display_order, -c.created_at.timestamp()))
+        board.append({
+            'status': status_val,
+            'label': label,
+            'color': color,
+            'cards': cards,
+        })
+
+    return render(request, 'sales_board.html', {
+        'board': board,
+        'stagnant_only': stagnant_only,
+    })
+
+
+@login_required
+def sales_deal_create(request):
+    """商談（案件+人材マッチング）新規作成"""
+    existing_project_id = request.GET.get('existing_project')
+    initial = {}
+    if existing_project_id:
+        initial['existing_project'] = existing_project_id
+
+    if request.method == 'POST':
+        form = SalesDealCreateForm(request.POST)
+        if form.is_valid():
+            data = form.cleaned_data
+            project = data.get('existing_project')
+            if not project:
+                project = SalesProject.objects.create(
+                    company_name=data['company_name'],
+                    title=data['title'],
+                    required_skills=data.get('required_skills', ''),
+                    budget_range=data.get('budget_range', ''),
+                    memo=data.get('project_memo', ''),
+                )
+            deal = SalesDeal.objects.create(
+                project=project,
+                candidate_name=data.get('candidate_name', ''),
+                candidate_entity=data.get('candidate_entity'),
+                status='received',
+                owner=request.user,
+                next_action_due=data.get('next_action_due'),
+                memo=data.get('memo', ''),
+            )
+            return redirect('sales_board')
+    else:
+        form = SalesDealCreateForm(initial=initial)
+
+    return render(request, 'sales_deal_form.html', {'form': form, 'is_edit': False})
+
+
+@login_required
+def sales_deal_detail(request, pk):
+    """商談詳細 + アクション記録 + ステータス変更"""
+    deal = get_object_or_404(
+        SalesDeal.objects.select_related('owner', 'project', 'candidate_entity', 'assignment'),
+        pk=pk,
+    )
+    actions = deal.actions.select_related('actor').all()
+    status_changes = deal.status_changes.select_related('actor').all()
+    action_form = SalesActionForm(initial={'acted_at': timezone.now()})
+
+    if request.method == 'POST':
+        new_status = request.POST.get('new_status')
+        if new_status and new_status != deal.status:
+            SalesStatusChange.objects.create(
+                deal=deal,
+                actor=request.user,
+                from_status=deal.status,
+                to_status=new_status,
+            )
+            deal.status = new_status
+            deal.save()
+            return redirect('sales_deal_detail', pk=pk)
+
+    status_choices = SalesDeal.STATUS_CHOICES
+
+    return render(request, 'sales_deal_detail.html', {
+        'deal': deal,
+        'actions': actions,
+        'status_changes': status_changes,
+        'action_form': action_form,
+        'status_choices': status_choices,
+    })
+
+
+@login_required
+def sales_deal_edit(request, pk):
+    """商談編集"""
+    deal = get_object_or_404(SalesDeal.objects.select_related('project'), pk=pk)
+    if request.method == 'POST':
+        form = SalesDealEditForm(request.POST, instance=deal)
+        if form.is_valid():
+            form.save()
+            return redirect('sales_deal_detail', pk=pk)
+    else:
+        form = SalesDealEditForm(instance=deal)
+    return render(request, 'sales_deal_form.html', {'form': form, 'is_edit': True, 'deal': deal})
+
+
+@login_required
+@require_POST
+def sales_deal_move(request, pk):
+    """ドラッグ&ドロップ用AJAX"""
+    deal = get_object_or_404(SalesDeal, pk=pk)
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid JSON'}, status=400)
+
+    new_status = data.get('new_status')
+    valid_statuses = [s[0] for s in SalesDeal.STATUS_CHOICES]
+    if new_status not in valid_statuses:
+        return JsonResponse({'error': 'Invalid status'}, status=400)
+
+    if new_status != deal.status:
+        SalesStatusChange.objects.create(
+            deal=deal,
+            actor=request.user,
+            from_status=deal.status,
+            to_status=new_status,
+        )
+        deal.status = new_status
+        deal.save()
+
+    return JsonResponse({'ok': True, 'new_status': new_status})
+
+
+@login_required
+@require_POST
+def sales_deal_action(request, pk):
+    """アクション追加"""
+    deal = get_object_or_404(SalesDeal, pk=pk)
+    form = SalesActionForm(request.POST)
+    if form.is_valid():
+        action = form.save(commit=False)
+        action.deal = deal
+        action.actor = request.user
+        action.save()
+        deal.last_action_at = action.acted_at
+        deal.save()
+        return redirect('sales_deal_detail', pk=pk)
+    return redirect('sales_deal_detail', pk=pk)
