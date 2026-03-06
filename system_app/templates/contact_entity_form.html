@@ -10,6 +10,119 @@
         </div>
     </div>
 
+    <!-- 契約書AI解析パネル（分割表示） -->
+    <div id="contract-review-panel" style="display:none; margin-bottom:24px;">
+        <div class="sf-fieldset" style="border:2px solid var(--sf-blue);">
+            <div class="sf-fieldset-header" style="background:var(--sf-blue); color:#fff;">
+                <i class="bi bi-robot"></i> 契約書AI解析 — 内容を確認して「フォームに反映」してください
+                <button type="button" id="close-review-btn" class="btn btn-sm btn-light float-end">✕ 閉じる</button>
+            </div>
+            <div class="sf-fieldset-body" style="padding:0;">
+                <div style="display:flex; height:75vh;">
+                    <!-- 左: 契約書表示 -->
+                    <div style="flex:1; border-right:2px solid #dee2e6; overflow:auto; padding:8px;">
+                        <div class="text-muted small mb-1"><i class="bi bi-highlighter"></i> 黄色ハイライトが抽出根拠セルです</div>
+                        <div id="contract-doc-html"></div>
+                    </div>
+                    <!-- 右: AI抽出結果レビュー -->
+                    <div style="flex:1; overflow:auto; padding:16px;">
+                        <div class="d-flex align-items-center mb-3 gap-2">
+                            <span class="badge bg-info" id="ai-confidence-badge"></span>
+                            <span class="text-muted small" id="ai-notes"></span>
+                        </div>
+                        <div class="row g-2">
+                            <div class="col-12 mb-1 fw-bold text-secondary small">■ 案件・人材</div>
+                            <div class="col-6">
+                                <label class="form-label form-label-sm">人材名</label>
+                                <input type="text" id="ai-worker-name" class="form-control form-control-sm">
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label form-label-sm">案件名</label>
+                                <input type="text" id="ai-project-name" class="form-control form-control-sm">
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label form-label-sm">上位会社名</label>
+                                <input type="text" id="ai-upstream-company" class="form-control form-control-sm">
+                            </div>
+
+                            <div class="col-12 mb-1 mt-2 fw-bold text-secondary small">■ 契約期間</div>
+                            <div class="col-6">
+                                <label class="form-label form-label-sm">開始日</label>
+                                <input type="date" id="ai-valid-from" class="form-control form-control-sm">
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label form-label-sm">終了日</label>
+                                <input type="date" id="ai-valid-to" class="form-control form-control-sm">
+                            </div>
+
+                            <div class="col-12 mb-1 mt-2 fw-bold text-secondary small">■ 上位契約条件</div>
+                            <div class="col-6">
+                                <label class="form-label form-label-sm">単価（円）</label>
+                                <input type="number" id="ai-unit-price" class="form-control form-control-sm">
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label form-label-sm">精算単位（分）</label>
+                                <input type="number" id="ai-settlement-unit" class="form-control form-control-sm">
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label form-label-sm">精算下限時間</label>
+                                <input type="number" step="0.5" id="ai-lower-limit" class="form-control form-control-sm">
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label form-label-sm">精算上限時間</label>
+                                <input type="number" step="0.5" id="ai-upper-limit" class="form-control form-control-sm">
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label form-label-sm">控除単価（円）</label>
+                                <input type="number" id="ai-deduction-price" class="form-control form-control-sm">
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label form-label-sm">超過単価（円）</label>
+                                <input type="number" id="ai-excess-price" class="form-control form-control-sm">
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label form-label-sm">支払サイト（日）</label>
+                                <input type="number" id="ai-payment-terms" class="form-control form-control-sm">
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label form-label-sm">金融機関休業日の場合</label>
+                                <input type="text" id="ai-bank-holiday" class="form-control form-control-sm">
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label form-label-sm">勤務表回収手段</label>
+                                <input type="text" id="ai-timesheet-method" class="form-control form-control-sm">
+                            </div>
+                            <div class="col-6 d-flex align-items-center gap-3 mt-1">
+                                <div class="form-check">
+                                    <input type="checkbox" id="ai-is-fixed-fee" class="form-check-input">
+                                    <label class="form-check-label form-label-sm" for="ai-is-fixed-fee">固定報酬</label>
+                                </div>
+                                <div class="form-check">
+                                    <input type="checkbox" id="ai-travel-included" class="form-check-input">
+                                    <label class="form-check-label form-label-sm" for="ai-travel-included">交通費込み</label>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="mt-4 d-grid">
+                            <button type="button" id="apply-ai-btn" class="btn btn-primary">
+                                <i class="bi bi-check2-circle"></i> この内容をフォームに反映
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 契約書アップロードボタン -->
+    <div class="mb-3 d-flex align-items-center gap-3">
+        <button type="button" id="contract-upload-btn" class="btn btn-outline-primary">
+            <i class="bi bi-robot"></i> 契約書からAI自動入力
+        </button>
+        <input type="file" id="contract-file-input" accept=".xlsx,.xls,.pdf" style="display:none;">
+        <span id="contract-upload-status" class="text-muted small"></span>
+    </div>
+
     <form method="post">
         {% csrf_token %}
 
@@ -636,5 +749,129 @@ function hideContactSelect(prefix) {
     wrapper.style.display = 'none';
     hiddenField.value = '';
 }
+
+/* ── 契約書AI解析 ── */
+(function() {
+    const uploadBtn   = document.getElementById('contract-upload-btn');
+    const fileInput   = document.getElementById('contract-file-input');
+    const statusEl    = document.getElementById('contract-upload-status');
+    const reviewPanel = document.getElementById('contract-review-panel');
+    const docHtml     = document.getElementById('contract-doc-html');
+    const closeBtn    = document.getElementById('close-review-btn');
+    const applyBtn    = document.getElementById('apply-ai-btn');
+
+    uploadBtn.addEventListener('click', () => fileInput.click());
+
+    fileInput.addEventListener('change', async () => {
+        const file = fileInput.files[0];
+        if (!file) return;
+
+        statusEl.textContent = '⏳ AIが解析中です…';
+        uploadBtn.disabled = true;
+        reviewPanel.style.display = 'none';
+
+        const fd = new FormData();
+        fd.append('contract_file', file);
+        fd.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+
+        try {
+            const res = await fetch('{% url "contract_parse_upload" %}', {
+                method: 'POST',
+                body: fd,
+            });
+            const data = await res.json();
+
+            if (!data.ok) {
+                statusEl.textContent = '❌ ' + (data.error || 'エラーが発生しました');
+                return;
+            }
+
+            // 契約書HTML表示
+            docHtml.innerHTML = data.html;
+
+            // AI結果をレビューフォームに反映
+            const f = data.fields;
+            const setAI = (id, val) => {
+                const el = document.getElementById(id);
+                if (!el) return;
+                if (el.type === 'checkbox') el.checked = !!val;
+                else el.value = (val !== null && val !== undefined) ? val : '';
+            };
+            setAI('ai-worker-name',      f.worker_name);
+            setAI('ai-project-name',     f.project_name);
+            setAI('ai-upstream-company', f.upstream_company_name);
+            setAI('ai-valid-from',       f.valid_from);
+            setAI('ai-valid-to',         f.valid_to);
+            setAI('ai-unit-price',       f.unit_price);
+            setAI('ai-settlement-unit',  f.settlement_unit_minutes);
+            setAI('ai-lower-limit',      f.lower_limit_hour);
+            setAI('ai-upper-limit',      f.upper_limit_hours);
+            setAI('ai-deduction-price',  f.deduction_unit_price);
+            setAI('ai-excess-price',     f.excess_unit_price);
+            setAI('ai-payment-terms',    f.upstream_payment_terms);
+            setAI('ai-bank-holiday',     f.bank_holiday_handling);
+            setAI('ai-timesheet-method', f.upstream_timesheet_collection_method);
+            setAI('ai-is-fixed-fee',     f.is_fixed_fee);
+            setAI('ai-travel-included',  f.travel_expense_included);
+
+            // 信頼度バッジ
+            const conf = Math.round((f.confidence || 0) * 100);
+            const badge = document.getElementById('ai-confidence-badge');
+            badge.textContent = `信頼度 ${conf}%`;
+            badge.className = `badge ${conf >= 80 ? 'bg-success' : conf >= 60 ? 'bg-warning text-dark' : 'bg-danger'}`;
+            document.getElementById('ai-notes').textContent = f.notes || '';
+
+            reviewPanel.style.display = 'block';
+            reviewPanel.scrollIntoView({ behavior: 'smooth' });
+            statusEl.textContent = `✅ ${file.name} の解析が完了しました。内容を確認してください。`;
+
+        } catch (e) {
+            statusEl.textContent = '❌ 通信エラー: ' + e.message;
+        } finally {
+            uploadBtn.disabled = false;
+            fileInput.value = '';
+        }
+    });
+
+    closeBtn.addEventListener('click', () => {
+        reviewPanel.style.display = 'none';
+        statusEl.textContent = '';
+    });
+
+    applyBtn.addEventListener('click', () => {
+        // AIレビューフォームの値をメインフォームに反映
+        const getAI = (id) => {
+            const el = document.getElementById(id);
+            if (!el) return null;
+            return el.type === 'checkbox' ? el.checked : el.value;
+        };
+
+        setField('id_name',           getAI('ai-worker-name'));
+        setField('id_project_name',   getAI('ai-project-name'));
+        setField('id_valid_from',     getAI('ai-valid-from'));
+        setField('id_valid_to',       getAI('ai-valid-to'));
+        setField('id_unit_price',     getAI('ai-unit-price'));
+        setField('id_settlement_unit_minutes', getAI('ai-settlement-unit'));
+        setField('id_lower_limit_hour',        getAI('ai-lower-limit'));
+        setField('id_upper_limit_hours',       getAI('ai-upper-limit'));
+        setField('id_deduction_unit_price',    getAI('ai-deduction-price'));
+        setField('id_excess_unit_price',       getAI('ai-excess-price'));
+        setField('id_upstream_payment_terms',  getAI('ai-payment-terms'));
+        setField('id_bank_holiday_handling',   getAI('ai-bank-holiday'));
+        setField('id_upstream_timesheet_collection_method', getAI('ai-timesheet-method'));
+        setField('id_is_fixed_fee',            getAI('ai-is-fixed-fee'));
+        setField('id_travel_expense_included', getAI('ai-travel-included'));
+
+        // 上位会社名をテキスト入力に反映（upstream_company_name フィールド）
+        const upstreamInput = document.getElementById('id_upstream_company_name');
+        if (upstreamInput) upstreamInput.value = getAI('ai-upstream-company') || '';
+
+        reviewPanel.style.display = 'none';
+        statusEl.textContent = '✅ フォームに反映しました。内容を確認してから保存してください。';
+
+        // フォームまでスクロール
+        document.querySelector('form[method="post"]').scrollIntoView({ behavior: 'smooth' });
+    });
+})();
 </script>
 {% endblock %}

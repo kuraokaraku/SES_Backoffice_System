@@ -2321,3 +2321,82 @@ def estimate_export_xlsx(request, assignment_id):
     )
 
 
+
+# =====================================================================
+# 契約書AI解析
+# =====================================================================
+
+@login_required
+@require_POST
+def contract_parse_upload(request):
+    """
+    契約書ファイル（Excel/PDF）をアップロードしてAIで項目を抽出する。
+    JSON を返す AJAX エンドポイント。
+    """
+    import tempfile
+    import os
+    from django.http import JsonResponse
+
+    f = request.FILES.get("contract_file")
+    if not f:
+        return JsonResponse({"error": "ファイルが選択されていません"}, status=400)
+
+    ext = os.path.splitext(f.name)[1].lower()
+    if ext not in (".xlsx", ".xls", ".pdf"):
+        return JsonResponse({"error": "Excel または PDF ファイルをアップロードしてください"}, status=400)
+
+    with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
+        for chunk in f.chunks():
+            tmp.write(chunk)
+        tmp_path = tmp.name
+
+    try:
+        if ext in (".xlsx", ".xls"):
+            from system_app.services.contract_parsers.xlsx_extractor import (
+                extract_cells, cells_to_text, render_html,
+            )
+            cells = extract_cells(tmp_path)
+            text = cells_to_text(cells)
+
+            from system_app.services.contract_parsers.ai_extractor import extract_contract_fields
+            ai_result = extract_contract_fields(text, file_type="xlsx")
+
+            highlighted = ai_result.get("highlighted_coords", [])
+            html = render_html(tmp_path, highlight_coords=highlighted)
+
+            return JsonResponse({
+                "ok": True,
+                "file_type": "xlsx",
+                "html": html,
+                "fields": ai_result,
+            })
+
+        else:  # PDF
+            from system_app.services.contract_parsers.pdf_extractor import (
+                extract_text, is_text_pdf,
+            )
+            if not is_text_pdf(tmp_path):
+                return JsonResponse({
+                    "error": "画像PDFは現在対応していません。テキスト形式のPDFをお使いください。"
+                }, status=400)
+
+            text = extract_text(tmp_path)
+            from system_app.services.contract_parsers.ai_extractor import extract_contract_fields
+            ai_result = extract_contract_fields(text, file_type="pdf")
+
+            safe_text = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            html = f'<pre style="white-space:pre-wrap; font-size:12px; padding:12px;">{safe_text}</pre>'
+
+            return JsonResponse({
+                "ok": True,
+                "file_type": "pdf",
+                "html": html,
+                "fields": ai_result,
+            })
+
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).exception("contract_parse_upload error")
+        return JsonResponse({"error": str(e)}, status=500)
+    finally:
+        os.unlink(tmp_path)

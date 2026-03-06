@@ -82,6 +82,7 @@ urlpatterns = [
 
     # --- API ---
     path('api/contact-entities/', views.contact_entity_search, name='contact_entity_search'),
+    path('api/contract-parse/', views.contract_parse_upload, name='contract_parse_upload'),
 
     # --- 名刺管理 ---
     path('business-cards/', views.business_card_list, name='business_card_list'),
