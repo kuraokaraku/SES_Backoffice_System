@@ -46,11 +46,7 @@ def judge_actual_hours(candidates):
 
     numbered = []
     for i, c in enumerate(candidates, 1):
-        line = f"{i}. 値={c['value']}h  (スコア={c.get('confidence', '?')}, 根拠={c.get('evidence', c.get('source', '?'))})"
-        ctx = c.get("context", "")
-        if ctx:
-            line += f"\n   周辺: {ctx}"
-        numbered.append(line)
+        numbered.append(f"{i}. 値={c['value']}h  (スコア={c.get('confidence', '?')}, 根拠={c.get('evidence', c.get('source', '?'))})")
     candidate_text = "\n".join(numbered)
 
     response = client.responses.create(
@@ -146,6 +142,8 @@ def enhance_parsed_result_with_ai(parsed):
 
     except Exception as e:
         error_type = type(e).__name__
+
+        
         parsed["parse_meta"]["ai"] = {
             "used": False,
             "error": error_type,
