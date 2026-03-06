@@ -32,7 +32,7 @@ SECRET_KEY = os.getenv('SECRET_KEY', 'fallback-secret-key')
 DEBUG = os.getenv('DEBUG', 'False') == 'True'
 #DEBUG = False
 
-ALLOWED_HOSTS = ["85.131.249.73", "localhost", "itfl-kanri.jp", "127.0.0.1"]
+ALLOWED_HOSTS = ["85.131.249.73", "43.207.97.181", "localhost", "itfl-kanri.jp", "itfl-backoffice.com", "127.0.0.1"]
 _extra_hosts = os.getenv("ALLOWED_HOSTS", "")
 if _extra_hosts:
     ALLOWED_HOSTS += [h.strip() for h in _extra_hosts.split(",") if h.strip()]
@@ -166,7 +166,7 @@ LOGOUT_REDIRECT_URL = 'login'  # ログイン画面のURLパターン名
 LANGUAGE_CODE = 'ja'  # ここが 'ja' になっていれば、標準のエラーは日本語化されます
 
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
-CSRF_TRUSTED_ORIGINS = ['https://itfl-kanri.jp']
+CSRF_TRUSTED_ORIGINS = ['https://itfl-kanri.jp', 'https://itfl-backoffice.com', 'http://43.207.97.181']
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
