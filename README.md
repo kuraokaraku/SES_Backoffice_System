@@ -57,13 +57,20 @@ source .venv/bin/activate
 # 3. ライブラリのインストール
 pip install -r requirements.txt
 
-# 4. DBのマイグレーション
+# 4. 環境変数の設定
+cp .env.example .env  # なければ手動で作成
+# .env に以下を記載:
+# SECRET_KEY=your-secret-key
+# DEBUG=True
+# OPENAI_API_KEY=your-openai-key
+
+# 5. DBのマイグレーション
 python manage.py migrate
 
-# 5. 管理ユーザー作成（初回のみ）
+# 6. 管理ユーザー作成（初回のみ）
 python manage.py createsuperuser
 
-# 6. サーバー起動
+# 7. サーバー起動
 python manage.py runserver
 ```
 
