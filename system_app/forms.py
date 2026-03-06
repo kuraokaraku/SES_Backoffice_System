@@ -1,6 +1,6 @@
 # system_app/forms.py
 from django import forms
-from .models import Freelancer, BusinessPartner, ContactEntity, SalesProject, SalesDeal, SalesAction, Assignment
+from .models import Freelancer, BusinessPartner, ContactEntity, Assignment
 from django.contrib.auth.models import User
 from django.contrib.auth.forms import UserCreationForm
 
@@ -319,101 +319,3 @@ class ContactEntityForm(forms.Form):
     )
 
 
-class SalesDealCreateForm(forms.Form):
-    """案件 + 商談を同時作成するフォーム"""
-
-    # --- 既存案件選択（任意）---
-    existing_project = forms.ModelChoiceField(
-        queryset=SalesProject.objects.all(),
-        required=False,
-        label='既存案件を選択',
-        empty_label='-- 新規案件を作成 --',
-        widget=forms.Select(attrs={'class': 'form-select', 'id': 'id_existing_project'}),
-    )
-
-    # --- 案件セクション ---
-    company_name = forms.CharField(
-        label='発注元会社名', max_length=100, required=False,
-        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': '株式会社〇〇'}),
-    )
-    title = forms.CharField(
-        label='案件名', max_length=200, required=False,
-        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Java開発案件'}),
-    )
-    required_skills = forms.CharField(
-        label='必要スキル', required=False,
-        widget=forms.Textarea(attrs={'class': 'form-control', 'rows': 2, 'placeholder': 'Java, Spring Boot, AWS'}),
-    )
-    budget_range = forms.CharField(
-        label='単価帯', max_length=100, required=False,
-        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': '55万〜65万'}),
-    )
-    project_memo = forms.CharField(
-        label='案件メモ', required=False,
-        widget=forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
-    )
-
-    # --- 人材セクション ---
-    candidate_name = forms.CharField(
-        label='人材名', max_length=100, required=False,
-        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': '人材名（テキスト入力）'}),
-    )
-    candidate_entity = forms.ModelChoiceField(
-        queryset=ContactEntity.objects.filter(kind='PERSON'),
-        required=False,
-        label='既存人材を選択',
-        empty_label='-- 選択しない --',
-        widget=forms.Select(attrs={'class': 'form-select'}),
-    )
-
-    # --- 商談セクション ---
-    next_action_due = forms.DateField(
-        label='次回アクション期日', required=False,
-        widget=forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
-    )
-    memo = forms.CharField(
-        label='商談メモ', required=False,
-        widget=forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
-    )
-
-    def clean(self):
-        cleaned_data = super().clean()
-        existing = cleaned_data.get('existing_project')
-        if not existing:
-            if not cleaned_data.get('company_name'):
-                self.add_error('company_name', '新規案件の場合は発注元会社名が必須です。')
-            if not cleaned_data.get('title'):
-                self.add_error('title', '新規案件の場合は案件名が必須です。')
-        return cleaned_data
-
-
-class SalesDealEditForm(forms.ModelForm):
-    """商談編集フォーム"""
-    class Meta:
-        model = SalesDeal
-        fields = ['candidate_name', 'candidate_entity', 'next_action_due', 'memo', 'assignment']
-        widgets = {
-            'candidate_name': forms.TextInput(attrs={'class': 'form-control'}),
-            'candidate_entity': forms.Select(attrs={'class': 'form-select'}),
-            'next_action_due': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
-            'memo': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
-            'assignment': forms.Select(attrs={'class': 'form-select'}),
-        }
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.fields['candidate_entity'].queryset = ContactEntity.objects.filter(kind='PERSON')
-        self.fields['candidate_entity'].empty_label = '-- 選択しない --'
-        self.fields['assignment'].queryset = Assignment.objects.filter(is_active=True)
-        self.fields['assignment'].required = False
-
-
-class SalesActionForm(forms.ModelForm):
-    class Meta:
-        model = SalesAction
-        fields = ['action_type', 'note', 'acted_at']
-        widgets = {
-            'action_type': forms.Select(attrs={'class': 'form-select'}),
-            'note': forms.Textarea(attrs={'class': 'form-control', 'rows': 2, 'placeholder': '内容'}),
-            'acted_at': forms.DateTimeInput(attrs={'class': 'form-control', 'type': 'datetime-local'}),
-        }

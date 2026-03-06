@@ -3,8 +3,8 @@ import json
 import os
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
-from .models import MonthlyProcess, TaskStatus, Freelancer, PurchaseOrder, BusinessPartner, BusinessCard, Assignment, ServiceContract, ContactEntity, ContactEmail, Invoice, InvoiceLine, Timesheet, InvoicePayment, Payable, PayablePayment, SalesProject, SalesDeal, SalesAction, SalesStatusChange
-from .forms import FreelancerForm, TaskStatusForm, BusinessPartnerForm, ContactEntityForm, SalesDealCreateForm, SalesDealEditForm, SalesActionForm
+from .models import MonthlyProcess, TaskStatus, Freelancer, PurchaseOrder, BusinessPartner, BusinessCard, Assignment, ServiceContract, ContactEntity, ContactEmail, Invoice, InvoiceLine, Timesheet, InvoicePayment, Payable, PayablePayment
+from .forms import FreelancerForm, TaskStatusForm, BusinessPartnerForm, ContactEntityForm
 from django.utils import timezone
 
 from django.contrib.auth.models import User
@@ -205,17 +205,7 @@ def dashboard(request):
         valid_to__lte=today + timedelta(days=60),
     ).count()
 
-    # --- (6) 営業：停滞商談 ---
-    from datetime import datetime
-    stagnant_threshold = timezone.now() - timedelta(days=7)
-    sales_stagnant_count = SalesDeal.objects.filter(
-        status__in=['received', 'working', 'proposed', 'waiting'],
-    ).filter(
-        Q(last_action_at__isnull=True, created_at__lt=stagnant_threshold) |
-        Q(last_action_at__lt=stagnant_threshold)
-    ).count()
-
-    # --- (7) キャッシュフロー KPI ---
+    # --- (6) キャッシュフロー KPI ---
     from django.db.models import Sum as _Sum2
     monthly_revenue = (
         Invoice.objects
@@ -263,7 +253,6 @@ def dashboard(request):
         'ar_unpaid_count': ar_unpaid_count,
         'contracts_end_30': contracts_end_30,
         'contracts_end_60': contracts_end_60,
-        'sales_stagnant_count': sales_stagnant_count,
         'monthly_revenue': monthly_revenue,
         'monthly_cost': monthly_cost,
         'monthly_gross_profit': monthly_gross_profit,
@@ -2332,179 +2321,3 @@ def estimate_export_xlsx(request, assignment_id):
     )
 
 
-# =====================================================================
-# 営業管理（カンバンボード）
-# =====================================================================
-
-@login_required
-def sales_board(request):
-    """カンバンボード表示"""
-    stagnant_only = request.GET.get('stagnant_only', '') == '1'
-
-    qs = SalesDeal.objects.select_related('owner', 'project', 'candidate_entity')
-
-    if stagnant_only:
-        from datetime import timedelta
-        threshold = timezone.now() - timedelta(days=7)
-        qs = qs.filter(
-            status__in=['received', 'working', 'proposed', 'waiting'],
-        ).filter(
-            Q(last_action_at__isnull=True, created_at__lt=threshold) |
-            Q(last_action_at__lt=threshold)
-        )
-
-    columns = [
-        ('received', '受信', '#64748b'),
-        ('working', '対応中', '#3b82f6'),
-        ('proposed', '提案済', '#8b5cf6'),
-        ('waiting', '待ち', '#f59e0b'),
-        ('won', '成約', '#10b981'),
-        ('lost', '失注', '#6b7280'),
-    ]
-
-    board = []
-    for status_val, label, color in columns:
-        cards = [c for c in qs if c.status == status_val]
-        cards.sort(key=lambda c: (c.display_order, -c.created_at.timestamp()))
-        board.append({
-            'status': status_val,
-            'label': label,
-            'color': color,
-            'cards': cards,
-        })
-
-    return render(request, 'sales_board.html', {
-        'board': board,
-        'stagnant_only': stagnant_only,
-    })
-
-
-@login_required
-def sales_deal_create(request):
-    """商談（案件+人材マッチング）新規作成"""
-    existing_project_id = request.GET.get('existing_project')
-    initial = {}
-    if existing_project_id:
-        initial['existing_project'] = existing_project_id
-
-    if request.method == 'POST':
-        form = SalesDealCreateForm(request.POST)
-        if form.is_valid():
-            data = form.cleaned_data
-            project = data.get('existing_project')
-            if not project:
-                project = SalesProject.objects.create(
-                    company_name=data['company_name'],
-                    title=data['title'],
-                    required_skills=data.get('required_skills', ''),
-                    budget_range=data.get('budget_range', ''),
-                    memo=data.get('project_memo', ''),
-                )
-            deal = SalesDeal.objects.create(
-                project=project,
-                candidate_name=data.get('candidate_name', ''),
-                candidate_entity=data.get('candidate_entity'),
-                status='received',
-                owner=request.user,
-                next_action_due=data.get('next_action_due'),
-                memo=data.get('memo', ''),
-            )
-            return redirect('sales_board')
-    else:
-        form = SalesDealCreateForm(initial=initial)
-
-    return render(request, 'sales_deal_form.html', {'form': form, 'is_edit': False})
-
-
-@login_required
-def sales_deal_detail(request, pk):
-    """商談詳細 + アクション記録 + ステータス変更"""
-    deal = get_object_or_404(
-        SalesDeal.objects.select_related('owner', 'project', 'candidate_entity', 'assignment'),
-        pk=pk,
-    )
-    actions = deal.actions.select_related('actor').all()
-    status_changes = deal.status_changes.select_related('actor').all()
-    action_form = SalesActionForm(initial={'acted_at': timezone.now()})
-
-    if request.method == 'POST':
-        new_status = request.POST.get('new_status')
-        if new_status and new_status != deal.status:
-            SalesStatusChange.objects.create(
-                deal=deal,
-                actor=request.user,
-                from_status=deal.status,
-                to_status=new_status,
-            )
-            deal.status = new_status
-            deal.save()
-            return redirect('sales_deal_detail', pk=pk)
-
-    status_choices = SalesDeal.STATUS_CHOICES
-
-    return render(request, 'sales_deal_detail.html', {
-        'deal': deal,
-        'actions': actions,
-        'status_changes': status_changes,
-        'action_form': action_form,
-        'status_choices': status_choices,
-    })
-
-
-@login_required
-def sales_deal_edit(request, pk):
-    """商談編集"""
-    deal = get_object_or_404(SalesDeal.objects.select_related('project'), pk=pk)
-    if request.method == 'POST':
-        form = SalesDealEditForm(request.POST, instance=deal)
-        if form.is_valid():
-            form.save()
-            return redirect('sales_deal_detail', pk=pk)
-    else:
-        form = SalesDealEditForm(instance=deal)
-    return render(request, 'sales_deal_form.html', {'form': form, 'is_edit': True, 'deal': deal})
-
-
-@login_required
-@require_POST
-def sales_deal_move(request, pk):
-    """ドラッグ&ドロップ用AJAX"""
-    deal = get_object_or_404(SalesDeal, pk=pk)
-    try:
-        data = json.loads(request.body)
-    except json.JSONDecodeError:
-        return JsonResponse({'error': 'Invalid JSON'}, status=400)
-
-    new_status = data.get('new_status')
-    valid_statuses = [s[0] for s in SalesDeal.STATUS_CHOICES]
-    if new_status not in valid_statuses:
-        return JsonResponse({'error': 'Invalid status'}, status=400)
-
-    if new_status != deal.status:
-        SalesStatusChange.objects.create(
-            deal=deal,
-            actor=request.user,
-            from_status=deal.status,
-            to_status=new_status,
-        )
-        deal.status = new_status
-        deal.save()
-
-    return JsonResponse({'ok': True, 'new_status': new_status})
-
-
-@login_required
-@require_POST
-def sales_deal_action(request, pk):
-    """アクション追加"""
-    deal = get_object_or_404(SalesDeal, pk=pk)
-    form = SalesActionForm(request.POST)
-    if form.is_valid():
-        action = form.save(commit=False)
-        action.deal = deal
-        action.actor = request.user
-        action.save()
-        deal.last_action_at = action.acted_at
-        deal.save()
-        return redirect('sales_deal_detail', pk=pk)
-    return redirect('sales_deal_detail', pk=pk)

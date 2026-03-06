@@ -17,7 +17,6 @@ from system_app.models import (
     ContactEntity,
     EntityContactPerson,
     Assignment,
-    SalesDeal,
 )
 
 
@@ -67,7 +66,6 @@ class Command(BaseCommand):
                     count = 0
                     for fk_field, _ in assignment_fks:
                         count += Assignment.objects.filter(**{fk_field: entity}).count()
-                    count += SalesDeal.objects.filter(candidate_entity=entity).count()
                     return count
 
                 group.sort(key=lambda e: (-fk_count(e), e.id))
@@ -90,16 +88,6 @@ class Command(BaseCommand):
                             )
                             if not dry_run:
                                 qs.update(**{fk_field: canonical})
-
-                    # SalesDeal.candidate_entity
-                    sd_qs = SalesDeal.objects.filter(candidate_entity=other)
-                    sd_cnt = sd_qs.count()
-                    if sd_cnt:
-                        self.stdout.write(
-                            f"  SalesDeal.candidate_entity: {sd_cnt} row(s) → id:{canonical.id}"
-                        )
-                        if not dry_run:
-                            sd_qs.update(candidate_entity=canonical)
 
                     # EntityContactPerson（COMPANY の担当者を canonical に移動）
                     cp_qs = EntityContactPerson.objects.filter(corporate_entity=other)

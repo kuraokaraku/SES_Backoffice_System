@@ -86,12 +86,4 @@ urlpatterns = [
     # --- 名刺管理 ---
     path('business-cards/', views.business_card_list, name='business_card_list'),
 
-    # --- 営業管理 ---
-    path('sales/', views.sales_board, name='sales_board'),
-    path('sales/deals/new/', views.sales_deal_create, name='sales_deal_create'),
-    path('sales/deals/<int:pk>/', views.sales_deal_detail, name='sales_deal_detail'),
-    path('sales/deals/<int:pk>/edit/', views.sales_deal_edit, name='sales_deal_edit'),
-    path('sales/deals/<int:pk>/move/', views.sales_deal_move, name='sales_deal_move'),
-    path('sales/deals/<int:pk>/action/', views.sales_deal_action, name='sales_deal_action'),
-
 ]

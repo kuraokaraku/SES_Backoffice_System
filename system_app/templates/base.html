@@ -411,11 +411,7 @@
                href="{% url 'dashboard' %}">
                 <i class="bi bi-grid-1x2"></i>ダッシュボード
             </a>
-            <a class="nav-link {% if '/sales/' in request.path %}active{% endif %}"
-               href="{% url 'sales_board' %}">
-                <i class="bi bi-kanban"></i>営業管理
-            </a>
-            <a class="nav-link {% if '/party/' in request.path or '/assignment/' in request.path %}active{% endif %}"
+<a class="nav-link {% if '/party/' in request.path or '/assignment/' in request.path %}active{% endif %}"
                href="{% url 'party_list' %}">
                 <i class="bi bi-briefcase"></i>契約管理
             </a>

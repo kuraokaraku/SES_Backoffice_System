@@ -333,20 +333,7 @@
             </div>
         </a>
 
-        <!-- (6) 営業：停滞商談 -->
-        <a href="{% url 'sales_board' %}?stagnant_only=1"
-           class="kpi-card{% if sales_stagnant_count == 0 %} muted{% elif sales_stagnant_count > 0 %} danger{% endif %}">
-            <div class="kpi-icon{% if sales_stagnant_count > 0 %} icon-danger{% else %} icon-default{% endif %}">
-                <i class="bi bi-clock-history"></i>
-            </div>
-            <div class="kpi-body">
-                <div class="kpi-label">営業：停滞商談</div>
-                <div class="kpi-value">{{ sales_stagnant_count }}<span class="unit">件</span></div>
-                <div class="kpi-sub">7日以上アクションなし</div>
-            </div>
-        </a>
-
-        <!-- (7) 支払：未支払 -->
+        <!-- (6) 支払：未支払 -->
         <a href="{% url 'ap_list' %}?ym={{ ym }}&status=unpaid"
            class="kpi-card{% if ap_unpaid_count == 0 %} muted{% elif ap_unpaid_count > 0 %} danger{% endif %}">
             <div class="kpi-icon{% if ap_unpaid_count > 0 %} icon-danger{% else %} icon-default{% endif %}">

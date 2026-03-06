@@ -5,7 +5,6 @@ from .models import (
     ContactEntity, EntityContactPerson, Assignment, ServiceContract,
     Invoice, InvoicePayment,
     Payable, PayablePayment,
-    SalesProject, SalesDeal, SalesAction, SalesStatusChange,
 )
 
 @admin.register(Freelancer)
@@ -90,24 +89,3 @@ class PayablePaymentAdmin(admin.ModelAdmin):
     readonly_fields = ('created_at', 'updated_at')
 
 
-@admin.register(SalesProject)
-class SalesProjectAdmin(admin.ModelAdmin):
-    list_display = ('company_name', 'title', 'budget_range', 'created_at')
-
-
-@admin.register(SalesDeal)
-class SalesDealAdmin(admin.ModelAdmin):
-    list_display = ('project', 'candidate_name', 'status', 'owner', 'created_at')
-    list_filter = ('status', 'owner')
-
-
-@admin.register(SalesAction)
-class SalesActionAdmin(admin.ModelAdmin):
-    list_display = ('deal', 'action_type', 'actor', 'acted_at')
-    list_filter = ('action_type',)
-
-
-@admin.register(SalesStatusChange)
-class SalesStatusChangeAdmin(admin.ModelAdmin):
-    list_display = ('deal', 'from_status', 'to_status', 'actor', 'changed_at')
-    readonly_fields = ('changed_at',)
